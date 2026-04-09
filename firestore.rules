@@ -1,0 +1,87 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: products
+    // Fields: title, description, price, discountPrice, images, category, variants, totalStock, rating, reviewCount, createdAt
+    //
+    // Collection: orders
+    // Fields: customerName, customerEmail, customerPhone, address, items, totalAmount, status, paymentMethod, createdAt
+    //
+    // Collection: reviews
+    // Fields: productId, userName, rating, comment, status, createdAt
+    //
+    // Collection: settings
+    // Fields: storeName, storeDescription, logoUrl, faviconUrl
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        request.auth.token.email == "salfi6692@gmail.com"
+      );
+    }
+
+    function isValidProduct(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.price is number && data.price >= 0 &&
+             data.category in ['Tracksuits', 'Trousers', 'T-Shirts'] &&
+             data.status in ['Draft', 'Active'] &&
+             data.slug is string;
+    }
+
+    function isValidOrder(data) {
+      return data.customerName is string && data.customerName.size() > 0 &&
+             data.customerEmail is string && data.customerEmail.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
+             data.totalAmount is number && data.totalAmount >= 0 &&
+             data.status in ['Pending', 'Confirmed', 'Shipped', 'Delivered'] &&
+             data.paymentMethod == 'COD';
+    }
+
+    function isValidReview(data) {
+      return data.productId is string &&
+             data.userName is string &&
+             data.rating is number && data.rating >= 1 && data.rating <= 5 &&
+             data.status in ['pending', 'approved'];
+    }
+
+    // Rules
+    
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.customerEmail == request.auth.token.email);
+      allow create: if true; // Allow guest checkout
+      allow update, delete: if isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if resource.data.status == 'approved' || isAdmin();
+      allow create: if true; // Allow guest reviews (moderated)
+      allow update, delete: if isAdmin();
+    }
+
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}
