@@ -69,7 +69,7 @@ export interface Order {
   address: string;
   items: CartItem[];
   totalAmount: number;
-  status: 'Pending' | 'Confirmed' | 'Shipped' | 'Delivered';
+  status: 'Pending' | 'Confirmed' | 'Shipped' | 'Delivered' | 'Cancelled';
   paymentMethod: 'COD';
   createdAt: any;
 }
@@ -91,6 +91,7 @@ export interface StoreSettings {
   contactEmail: string;
   contactPhone: string;
   address: string;
+  currency: string;
 
   // Branding
   logoUrl: string;

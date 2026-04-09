@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -12,6 +13,7 @@ import { toast } from 'sonner';
 import { ChevronLeft, CreditCard, Truck } from 'lucide-react';
 
 export default function Checkout() {
+  const { settings } = useSettings();
   const { cart, totalPrice, clearCart } = useCart();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -194,7 +196,7 @@ export default function Checkout() {
                         <p className="text-xs text-muted-foreground">Qty: {item.quantity} | {item.selectedSize}</p>
                       </div>
                     </div>
-                    <p className="font-bold">${(item.discountPrice || item.price) * item.quantity}</p>
+                    <p className="font-bold">{settings.currency} {(item.discountPrice || item.price) * item.quantity}</p>
                   </div>
                 ))}
               </div>
@@ -202,7 +204,7 @@ export default function Checkout() {
               <div className="border-t pt-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
-                  <span>${totalPrice}</span>
+                  <span>{settings.currency} {totalPrice}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Shipping</span>
@@ -210,7 +212,7 @@ export default function Checkout() {
                 </div>
                 <div className="flex justify-between items-end pt-2">
                   <span className="font-bold text-lg">Total</span>
-                  <span className="font-bold text-2xl text-primary">${totalPrice}</span>
+                  <span className="font-bold text-2xl text-primary">{settings.currency} {totalPrice}</span>
                 </div>
               </div>
 

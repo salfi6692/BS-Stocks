@@ -5,6 +5,7 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Star, ShoppingCart } from 'lucide-react';
 import { useCart } from '../contexts/CartContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { motion } from 'motion/react';
 
 interface ProductCardProps {
@@ -13,6 +14,7 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ product }: ProductCardProps) {
+  const { settings } = useSettings();
   const { addToCart } = useCart();
   const discount = product.compareAtPrice 
     ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100) 
@@ -67,11 +69,11 @@ export default function ProductCard({ product }: ProductCardProps) {
           <div className="mt-2 flex items-center gap-2">
             {product.compareAtPrice ? (
               <>
-                <span className="font-bold text-lg">${product.price}</span>
-                <span className="text-sm text-muted-foreground line-through">${product.compareAtPrice}</span>
+                <span className="font-bold text-lg">{settings.currency} {product.price}</span>
+                <span className="text-sm text-muted-foreground line-through">{settings.currency} {product.compareAtPrice}</span>
               </>
             ) : (
-              <span className="font-bold text-lg">${product.price}</span>
+              <span className="font-bold text-lg">{settings.currency} {product.price}</span>
             )}
           </div>
         </CardContent>

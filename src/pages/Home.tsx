@@ -166,7 +166,7 @@ export default function Home() {
       <section className="container mx-auto px-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {[
-            { icon: <Truck className="h-8 w-8" />, title: "Free Shipping", desc: "On orders over $100" },
+            { icon: <Truck className="h-8 w-8" />, title: "Free Shipping", desc: `On orders over ${settings.currency} 100` },
             { icon: <ShieldCheck className="h-8 w-8" />, title: "Secure Payment", desc: "100% secure checkout" },
             { icon: <RefreshCcw className="h-8 w-8" />, title: "Easy Returns", desc: "30-day return policy" },
             { icon: <Zap className="h-8 w-8" />, title: "Fast Delivery", desc: "Worldwide shipping" },

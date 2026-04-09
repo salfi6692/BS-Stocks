@@ -2,9 +2,11 @@ import { Link } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import { Button } from '../components/ui/button';
 import { Trash2, ShoppingBag, ArrowRight, Minus, Plus } from 'lucide-react';
+import { useSettings } from '../contexts/SettingsContext';
 import { motion } from 'motion/react';
 
 export default function Cart() {
+  const { settings } = useSettings();
   const { cart, removeFromCart, updateQuantity, totalPrice, totalItems } = useCart();
 
   if (cart.length === 0) {
@@ -80,8 +82,8 @@ export default function Cart() {
                     </button>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-xl">${(item.discountPrice || item.price) * item.quantity}</p>
-                    <p className="text-xs text-muted-foreground">${item.discountPrice || item.price} each</p>
+                    <p className="font-bold text-xl">{settings.currency} {(item.discountPrice || item.price) * item.quantity}</p>
+                    <p className="text-xs text-muted-foreground">{settings.currency} {item.discountPrice || item.price} each</p>
                   </div>
                 </div>
               </div>
@@ -96,7 +98,7 @@ export default function Cart() {
             <div className="space-y-4">
               <div className="flex justify-between text-muted-foreground">
                 <span>Subtotal</span>
-                <span className="text-foreground font-medium">${totalPrice}</span>
+                <span className="text-foreground font-medium">{settings.currency} {totalPrice}</span>
               </div>
               <div className="flex justify-between text-muted-foreground">
                 <span>Shipping</span>
@@ -104,11 +106,11 @@ export default function Cart() {
               </div>
               <div className="flex justify-between text-muted-foreground">
                 <span>Tax</span>
-                <span className="text-foreground font-medium">$0.00</span>
+                <span className="text-foreground font-medium">{settings.currency} 0.00</span>
               </div>
               <div className="border-t pt-4 flex justify-between items-end">
                 <span className="font-bold text-lg">Total</span>
-                <span className="font-bold text-2xl text-primary">${totalPrice}</span>
+                <span className="font-bold text-2xl text-primary">{settings.currency} {totalPrice}</span>
               </div>
             </div>
 

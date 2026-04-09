@@ -14,6 +14,7 @@ const defaultSettings: StoreSettings = {
   contactEmail: '',
   contactPhone: '',
   address: '',
+  currency: 'PKR',
   logoUrl: '',
   faviconUrl: '',
   logoSize: 'medium',
@@ -29,10 +30,9 @@ const defaultSettings: StoreSettings = {
   darkMode: false,
   headerMenu: [
     { id: '1', label: 'Home', path: '/' },
-    { id: '2', label: 'Shop', path: '/products' },
-    { id: '3', label: 'Tracksuits', path: '/products?category=Tracksuits' },
-    { id: '4', label: 'Trousers', path: '/products?category=Trousers' },
-    { id: '5', label: 'T-Shirts', path: '/products?category=T-Shirts' },
+    { id: '2', label: 'Tracksuits', path: '/products?category=Tracksuits' },
+    { id: '3', label: 'Trousers', path: '/products?category=Trousers' },
+    { id: '4', label: 'T-Shirts', path: '/products?category=T-Shirts' },
   ],
   footerMenu: [
     { id: '1', label: 'About Us', path: '/pages/about-us' },

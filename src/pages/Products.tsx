@@ -6,11 +6,13 @@ import { Product } from '../types';
 import ProductCard from '../components/ProductCard';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { useSettings } from '../contexts/SettingsContext';
 import { Skeleton } from '../components/ui/skeleton';
 import { Filter, SlidersHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../components/ui/sheet';
 
 export default function Products() {
+  const { settings } = useSettings();
   const [searchParams, setSearchParams] = useSearchParams();
   const categoryFilter = searchParams.get('category');
   
@@ -86,7 +88,7 @@ export default function Products() {
                 <div className="space-y-2">
                   <h4 className="font-medium">Category</h4>
                   <div className="flex flex-col gap-2">
-                    {['All', 'Tracksuits', 'Trousers', 'T-Shirts'].map(cat => (
+                    {['All', ...settings.headerMenu.map(m => m.label)].map(cat => (
                       <Button 
                         key={cat} 
                         variant={categoryFilter === cat || (!categoryFilter && cat === 'All') ? 'default' : 'ghost'} 
@@ -106,9 +108,9 @@ export default function Products() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Prices</SelectItem>
-                      <SelectItem value="under-50">Under $50</SelectItem>
-                      <SelectItem value="50-100">$50 - $100</SelectItem>
-                      <SelectItem value="over-100">Over $100</SelectItem>
+                      <SelectItem value="under-50">Under {settings.currency} 50</SelectItem>
+                      <SelectItem value="50-100">{settings.currency} 50 - {settings.currency} 100</SelectItem>
+                      <SelectItem value="over-100">Over {settings.currency} 100</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -139,7 +141,7 @@ export default function Products() {
               <SlidersHorizontal className="h-4 w-4" /> Categories
             </h3>
             <div className="flex flex-col gap-1">
-              {['All', 'Tracksuits', 'Trousers', 'T-Shirts'].map(cat => (
+              {['All', ...settings.headerMenu.map(m => m.label)].map(cat => (
                 <button 
                   key={cat}
                   onClick={() => setSearchParams(cat === 'All' ? {} : { category: cat })}
@@ -160,9 +162,9 @@ export default function Products() {
             <div className="flex flex-col gap-2">
               {[
                 { label: 'All Prices', value: 'all' },
-                { label: 'Under $50', value: 'under-50' },
-                { label: ' $50 - $100', value: '50-100' },
-                { label: 'Over $100', value: 'over-100' },
+                { label: `Under ${settings.currency} 50`, value: 'under-50' },
+                { label: ` ${settings.currency} 50 - ${settings.currency} 100`, value: '50-100' },
+                { label: `Over ${settings.currency} 100`, value: 'over-100' },
               ].map(range => (
                 <label key={range.value} className="flex items-center gap-2 text-sm cursor-pointer">
                   <input 

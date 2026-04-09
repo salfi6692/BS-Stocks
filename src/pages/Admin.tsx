@@ -47,6 +47,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { collection, query, getDocs, doc, setDoc, updateDoc, deleteDoc, orderBy, serverTimestamp, getDoc, addDoc } from 'firebase/firestore';
 import { db, auth, logout } from '../firebase';
 import { Product, Order, Review, StoreSettings } from '../types';
+import { useSettings } from '../contexts/SettingsContext';
 import { toast } from 'sonner';
 import { onAuthStateChanged } from 'firebase/auth';
 import { GoogleGenAI } from '@google/genai';
@@ -60,6 +61,7 @@ import { cn } from '../lib/utils';
 // --- Admin Components ---
 
 function Dashboard() {
+  const { settings } = useSettings();
   const [stats, setStats] = useState({ sales: 0, orders: 0, products: 0, reviews: 0 });
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
 
@@ -102,7 +104,7 @@ function Dashboard() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${stats.sales}</div>
+            <div className="text-2xl font-bold">{settings.currency} {stats.sales}</div>
             <p className="text-xs text-muted-foreground">+20.1% from last month</p>
           </CardContent>
         </Card>
@@ -182,7 +184,7 @@ function Dashboard() {
                         {order.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right font-bold">${order.totalAmount}</TableCell>
+                    <TableCell className="text-right font-bold">{settings.currency} {order.totalAmount}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -195,6 +197,7 @@ function Dashboard() {
 }
 
 function ProductsManager() {
+  const { settings } = useSettings();
   const [products, setProducts] = useState<Product[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [currentProduct, setCurrentProduct] = useState<Partial<Product> | null>(null);
@@ -720,9 +723,17 @@ function ProductsManager() {
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Tracksuits">Tracksuits</SelectItem>
-                      <SelectItem value="Trousers">Trousers</SelectItem>
-                      <SelectItem value="T-Shirts">T-Shirts</SelectItem>
+                      {settings.headerMenu.filter(m => m.path.includes('category=') || m.label !== 'Home').map(m => (
+                        <SelectItem key={m.id} value={m.label}>{m.label}</SelectItem>
+                      ))}
+                      {/* Fallback if menu is empty */}
+                      {settings.headerMenu.length === 0 && (
+                        <>
+                          <SelectItem value="Tracksuits">Tracksuits</SelectItem>
+                          <SelectItem value="Trousers">Trousers</SelectItem>
+                          <SelectItem value="T-Shirts">T-Shirts</SelectItem>
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -852,7 +863,7 @@ function ProductsManager() {
                         {product.hasVariants && <span className="text-xs text-muted-foreground block">for {product.variants?.length || 0} variants</span>}
                       </TableCell>
                       <TableCell>{product.category}</TableCell>
-                      <TableCell>${product.price}</TableCell>
+                      <TableCell>{settings.currency} {product.price}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button variant="ghost" size="icon" onClick={() => handleDuplicate(product)}>
@@ -882,6 +893,7 @@ function ProductsManager() {
 }
 
 function OrdersManager() {
+  const { settings } = useSettings();
   const [orders, setOrders] = useState<Order[]>([]);
 
   const fetchOrders = async () => {
@@ -895,6 +907,17 @@ function OrdersManager() {
     await updateDoc(doc(db, 'orders', id), { status });
     toast.success('Order status updated');
     fetchOrders();
+  };
+
+  const deleteOrder = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this order?')) return;
+    try {
+      await deleteDoc(doc(db, 'orders', id));
+      toast.success('Order deleted');
+      fetchOrders();
+    } catch (error) {
+      toast.error('Error deleting order');
+    }
   };
 
   return (
@@ -919,7 +942,7 @@ function OrdersManager() {
                   <div className="font-medium">{order.customerName}</div>
                   <div className="text-xs text-muted-foreground">{order.customerEmail}</div>
                 </TableCell>
-                <TableCell className="font-bold">${order.totalAmount}</TableCell>
+                <TableCell className="font-bold">{settings.currency} {order.totalAmount}</TableCell>
                 <TableCell>
                   <Select value={order.status} onValueChange={v => updateStatus(order.id!, v)}>
                     <SelectTrigger className="w-[130px]">
@@ -930,41 +953,47 @@ function OrdersManager() {
                       <SelectItem value="Confirmed">Confirmed</SelectItem>
                       <SelectItem value="Shipped">Shipped</SelectItem>
                       <SelectItem value="Delivered">Delivered</SelectItem>
+                      <SelectItem value="Cancelled">Cancelled</SelectItem>
                     </SelectContent>
                   </Select>
                 </TableCell>
                 <TableCell className="text-right">
-                  <Dialog>
-                    <DialogTrigger render={<Button variant="outline" size="sm">Details</Button>} />
-                    <DialogContent>
-                      <DialogHeader><DialogTitle>Order Details</DialogTitle></DialogHeader>
-                      <div className="space-y-4 py-4">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <p className="text-muted-foreground">Customer</p>
-                            <p className="font-bold">{order.customerName}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground">Phone</p>
-                            <p className="font-bold">{order.customerPhone}</p>
-                          </div>
-                          <div className="col-span-2">
-                            <p className="text-muted-foreground">Address</p>
-                            <p className="font-bold">{order.address}</p>
-                          </div>
-                        </div>
-                        <div className="border-t pt-4">
-                          <p className="font-bold mb-2">Items</p>
-                          {order.items.map((item, i) => (
-                            <div key={i} className="flex justify-between text-sm py-1">
-                              <span>{item.title} (x{item.quantity}) - {item.selectedSize}</span>
-                              <span>${(item.price) * item.quantity}</span>
+                  <div className="flex justify-end gap-2">
+                    <Dialog>
+                      <DialogTrigger render={<Button variant="outline" size="sm">Details</Button>} />
+                      <DialogContent>
+                        <DialogHeader><DialogTitle>Order Details</DialogTitle></DialogHeader>
+                        <div className="space-y-4 py-4">
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <p className="text-muted-foreground">Customer</p>
+                              <p className="font-bold">{order.customerName}</p>
                             </div>
-                          ))}
+                            <div>
+                              <p className="text-muted-foreground">Phone</p>
+                              <p className="font-bold">{order.customerPhone}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <p className="text-muted-foreground">Address</p>
+                              <p className="font-bold">{order.address}</p>
+                            </div>
+                          </div>
+                          <div className="border-t pt-4">
+                            <p className="font-bold mb-2">Items</p>
+                            {order.items.map((item, i) => (
+                              <div key={i} className="flex justify-between text-sm py-1">
+                                <span>{item.title} (x{item.quantity}) - {item.selectedSize}</span>
+                                <span>{settings.currency} {(item.price) * item.quantity}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                      </DialogContent>
+                    </Dialog>
+                    <Button variant="ghost" size="icon" onClick={() => deleteOrder(order.id!)}>
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -1073,6 +1102,10 @@ function StoreSettingsManager() {
                   <div className="space-y-2">
                     <Label>Contact Phone</Label>
                     <Input value={settings.contactPhone} onChange={e => setSettings(s => ({ ...s, contactPhone: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Store Currency</Label>
+                    <Input value={settings.currency} onChange={e => setSettings(s => ({ ...s, currency: e.target.value }))} placeholder="e.g. PKR, USD, EUR" />
                   </div>
                 </div>
                 <div className="space-y-2">

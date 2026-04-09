@@ -10,6 +10,7 @@ import { Label } from '../components/ui/label';
 import { Card } from '../components/ui/card';
 import { Star, ShoppingCart, Truck, RefreshCcw, ShieldCheck, ChevronRight, ChevronLeft, Send } from 'lucide-react';
 import { useCart } from '../contexts/CartContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Skeleton } from '../components/ui/skeleton';
 import { motion } from 'motion/react';
@@ -17,6 +18,7 @@ import ProductCard from '../components/ProductCard';
 import { toast } from 'sonner';
 
 export default function ProductDetail() {
+  const { settings } = useSettings();
   const { id } = useParams<{ id: string }>();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -193,7 +195,7 @@ export default function ProductDetail() {
               </Badge>
             )}
           </div>
-          <div className="flex gap-4 overflow-x-auto pb-2">
+          <div className="flex gap-4 overflow-x-auto pb-2 max-w-full">
             {product.images.map((img, i) => (
               <button 
                 key={i} 
@@ -233,11 +235,11 @@ export default function ProductDetail() {
           <div className="flex items-center gap-4">
             {product.compareAtPrice ? (
               <>
-                <span className="text-4xl font-bold">${currentPrice}</span>
-                <span className="text-xl text-muted-foreground line-through">${product.compareAtPrice}</span>
+                <span className="text-4xl font-bold">{settings.currency} {currentPrice}</span>
+                <span className="text-xl text-muted-foreground line-through">{settings.currency} {product.compareAtPrice}</span>
               </>
             ) : (
-              <span className="text-4xl font-bold">${currentPrice}</span>
+              <span className="text-4xl font-bold">{settings.currency} {currentPrice}</span>
             )}
           </div>
 
