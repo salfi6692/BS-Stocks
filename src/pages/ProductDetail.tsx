@@ -164,14 +164,14 @@ export default function ProductDetail() {
   return (
     <div className="container mx-auto px-4 py-12">
       {/* Breadcrumbs */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-8">
+      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mb-8">
         <Link to="/" className="hover:text-primary">Home</Link>
-        <ChevronRight className="h-4 w-4" />
+        <ChevronRight className="h-4 w-4 shrink-0" />
         <Link to="/products" className="hover:text-primary">Shop</Link>
-        <ChevronRight className="h-4 w-4" />
-        <Link to={`/products?category=${product.category}`} className="hover:text-primary">{product.category}</Link>
-        <ChevronRight className="h-4 w-4" />
-        <span className="text-foreground font-medium truncate">{product.title}</span>
+        <ChevronRight className="h-4 w-4 shrink-0" />
+        <Link to={`/products?category=${product.category}`} className="hover:text-primary whitespace-nowrap">{product.category}</Link>
+        <ChevronRight className="h-4 w-4 shrink-0" />
+        <span className="text-foreground font-medium truncate max-w-[150px] sm:max-w-none">{product.title}</span>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
@@ -221,7 +221,7 @@ export default function ProductDetail() {
                 <Badge variant="destructive">Out of Stock</Badge>
               )}
             </div>
-            <h1 className="text-4xl font-bold tracking-tighter leading-tight">{product.title}</h1>
+            <h1 className="text-2xl md:text-4xl font-bold tracking-tighter leading-tight break-words">{product.title}</h1>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1">
                 {Array(5).fill(0).map((_, i) => (
@@ -232,14 +232,14 @@ export default function ProductDetail() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             {product.compareAtPrice ? (
               <>
-                <span className="text-4xl font-bold">{settings.currency} {currentPrice}</span>
-                <span className="text-xl text-muted-foreground line-through">{settings.currency} {product.compareAtPrice}</span>
+                <span className="text-2xl md:text-4xl font-bold">{settings.currency} {currentPrice}</span>
+                <span className="text-lg md:text-xl text-muted-foreground line-through">{settings.currency} {product.compareAtPrice}</span>
               </>
             ) : (
-              <span className="text-4xl font-bold">{settings.currency} {currentPrice}</span>
+              <span className="text-2xl md:text-4xl font-bold">{settings.currency} {currentPrice}</span>
             )}
           </div>
 
@@ -327,10 +327,10 @@ export default function ProductDetail() {
       {/* Tabs Section */}
       <div className="mt-20">
         <Tabs defaultValue="description" className="w-full">
-          <TabsList className="w-full justify-start border-b rounded-none bg-transparent h-auto p-0 gap-8">
-            <TabsTrigger value="description" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-4 text-lg font-bold">Description</TabsTrigger>
-            <TabsTrigger value="reviews" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-4 text-lg font-bold">Reviews ({product.reviewCount})</TabsTrigger>
-            <TabsTrigger value="shipping" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-4 text-lg font-bold">Shipping</TabsTrigger>
+          <TabsList className="w-full justify-start border-b rounded-none bg-transparent h-auto p-0 gap-4 md:gap-8 flex-wrap">
+            <TabsTrigger value="description" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-4 text-base md:text-lg font-bold">Description</TabsTrigger>
+            <TabsTrigger value="reviews" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-4 text-base md:text-lg font-bold">Reviews ({product.reviewCount})</TabsTrigger>
+            <TabsTrigger value="shipping" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-4 text-base md:text-lg font-bold">Shipping</TabsTrigger>
           </TabsList>
           <TabsContent value="description" className="py-8 text-muted-foreground leading-relaxed max-w-3xl">
             <div className="prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: product.description }} />

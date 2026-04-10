@@ -114,6 +114,19 @@ export default function Products() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2">
+                  <h4 className="font-medium">Sort By</h4>
+                  <Select value={sortBy} onValueChange={setSortBy}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sort by" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="latest">Latest Arrivals</SelectItem>
+                      <SelectItem value="price-low">Price: Low to High</SelectItem>
+                      <SelectItem value="price-high">Price: High to Low</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </SheetContent>
           </Sheet>

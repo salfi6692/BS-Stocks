@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Sheet, SheetContent, SheetTrigger, SheetClose } from '../components/ui/sheet';
 import { Skeleton } from '../components/ui/skeleton';
 import { StandardPage, Banner, MenuItem } from '../types';
 import { 
@@ -97,7 +98,7 @@ function Dashboard() {
 
   return (
     <div className="space-y-8">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
@@ -924,10 +925,11 @@ function OrdersManager() {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">Orders</h2>
       <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Order ID</TableHead>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Order ID</TableHead>
               <TableHead>Customer</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Status</TableHead>
@@ -999,9 +1001,10 @@ function OrdersManager() {
             ))}
           </TableBody>
         </Table>
-      </Card>
-    </div>
-  );
+      </div>
+    </Card>
+  </div>
+);
 }
 
 function StoreSettingsManager() {
@@ -1710,10 +1713,11 @@ function PagesManager() {
       </div>
 
       <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Title</TableHead>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Title</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Last Updated</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -1745,9 +1749,10 @@ function PagesManager() {
             )}
           </TableBody>
         </Table>
-      </Card>
-    </div>
-  );
+      </div>
+    </Card>
+  </div>
+);
 }
 
 // --- Admin Layout ---
@@ -1784,9 +1789,45 @@ export default function Admin() {
   ];
 
   return (
-    <div className="flex min-h-[calc(100vh-80px)] bg-muted/30">
+    <div className="flex flex-col md:flex-row min-h-[calc(100vh-80px)] bg-muted/30">
+      {/* Mobile Header */}
+      <div className="md:hidden flex items-center justify-between p-4 bg-background border-b">
+        <h2 className="text-lg font-bold tracking-tighter">ADMIN PANEL</h2>
+        <Sheet>
+          <SheetTrigger render={<Button variant="ghost" size="icon"><Menu className="h-6 w-6" /></Button>} />
+          <SheetContent side="left" className="w-64 p-0">
+            <div className="p-6 border-b">
+              <h2 className="text-lg font-bold tracking-tighter">ADMIN PANEL</h2>
+            </div>
+            <nav className="px-4 py-6 space-y-2">
+              {menuItems.map((item) => (
+                <SheetClose key={item.path} render={
+                  <Link 
+                    to={item.path}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-3 rounded-xl transition-all",
+                      location.pathname === item.path ? "bg-primary text-primary-foreground shadow-lg" : "hover:bg-muted"
+                    )}
+                  >
+                    {item.icon}
+                    <span className="font-medium">{item.label}</span>
+                  </Link>
+                } />
+              ))}
+              <button 
+                onClick={logout}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all w-full text-destructive hover:bg-destructive/10 mt-10"
+              >
+                <LogOut className="h-5 w-5" />
+                <span className="font-medium">Logout</span>
+              </button>
+            </nav>
+          </SheetContent>
+        </Sheet>
+      </div>
+
       {/* Sidebar */}
-      <aside className="w-64 bg-background border-r hidden md:block">
+      <aside className="w-64 bg-background border-r hidden md:block shrink-0">
         <div className="p-6">
           <h2 className="text-lg font-bold tracking-tighter">ADMIN PANEL</h2>
         </div>
@@ -1815,7 +1856,7 @@ export default function Admin() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-grow p-8">
+      <main className="flex-grow p-4 md:p-8 overflow-x-hidden">
         <Routes>
           <Route index element={<Dashboard />} />
           <Route path="products" element={<ProductsManager />} />
