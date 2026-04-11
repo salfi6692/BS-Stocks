@@ -5,6 +5,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import ScrollToTop from './components/ScrollToTop';
 import Home from './pages/Home';
 import Products from './pages/Products';
 import ProductDetail from './pages/ProductDetail';
@@ -26,6 +27,7 @@ export default function App() {
       <ThemeProvider>
         <CartProvider>
           <Router>
+            <ScrollToTop />
             <div className="min-h-screen bg-background text-foreground flex flex-col">
               <Navbar />
               <main className="flex-grow pt-20">

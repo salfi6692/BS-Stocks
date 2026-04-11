@@ -161,6 +161,16 @@ export default function ProductDetail() {
   const currentPrice = selectedVariant?.price || product?.price || 0;
   const currentStock = selectedVariant ? selectedVariant.stock : (product?.stockQuantity || 0);
 
+  const nextImage = () => {
+    if (!product || product.images.length <= 1) return;
+    setSelectedImage((prev) => (prev + 1) % product.images.length);
+  };
+
+  const prevImage = () => {
+    if (!product || product.images.length <= 1) return;
+    setSelectedImage((prev) => (prev - 1 + product.images.length) % product.images.length);
+  };
+
   return (
     <div className="container mx-auto px-4 py-12">
       {/* Breadcrumbs */}
@@ -177,13 +187,34 @@ export default function ProductDetail() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
         {/* Image Gallery */}
         <div className="space-y-4">
-          <div className="relative aspect-[4/5] overflow-hidden rounded-3xl bg-muted">
+          <div className="relative aspect-[4/5] overflow-hidden rounded-3xl bg-muted group">
             <img 
               src={product.images[selectedImage] || 'https://picsum.photos/seed/clothing/800/1000'} 
               alt={product.title} 
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
             />
+            
+            {/* Image Navigation Buttons */}
+            {product.images.length > 1 && (
+              <>
+                <button 
+                  onClick={prevImage}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-background/80 hover:bg-background text-foreground p-2 rounded-full shadow-lg transition-all z-10 opacity-0 group-hover:opacity-100"
+                  aria-label="Previous image"
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </button>
+                <button 
+                  onClick={nextImage}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 bg-background/80 hover:bg-background text-foreground p-2 rounded-full shadow-lg transition-all z-10 opacity-0 group-hover:opacity-100"
+                  aria-label="Next image"
+                >
+                  <ChevronRight className="h-6 w-6" />
+                </button>
+              </>
+            )}
+
             {currentStock <= 0 && !product.continueSellingOutOfStock && (
               <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] flex items-center justify-center">
                 <Badge variant="destructive" className="text-2xl py-2 px-6 font-bold shadow-xl">SOLD OUT</Badge>
@@ -211,7 +242,7 @@ export default function ProductDetail() {
         </div>
 
         {/* Product Info */}
-        <div className="space-y-8">
+        <div className="space-y-8 min-w-0">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="uppercase tracking-widest">{product.category}</Badge>
@@ -242,8 +273,6 @@ export default function ProductDetail() {
               <span className="text-2xl md:text-4xl font-bold">{settings.currency} {currentPrice}</span>
             )}
           </div>
-
-          <div className="text-muted-foreground leading-relaxed prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: product.description }} />
 
           <div className="space-y-6 pt-4">
             {product.hasVariants && (
@@ -325,15 +354,15 @@ export default function ProductDetail() {
       </div>
 
       {/* Tabs Section */}
-      <div className="mt-20">
+      <div className="mt-20 min-w-0">
         <Tabs defaultValue="description" className="w-full">
           <TabsList className="w-full justify-start border-b rounded-none bg-transparent h-auto p-0 gap-4 md:gap-8 flex-wrap">
             <TabsTrigger value="description" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-4 text-base md:text-lg font-bold">Description</TabsTrigger>
             <TabsTrigger value="reviews" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-4 text-base md:text-lg font-bold">Reviews ({product.reviewCount})</TabsTrigger>
             <TabsTrigger value="shipping" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-4 text-base md:text-lg font-bold">Shipping</TabsTrigger>
           </TabsList>
-          <TabsContent value="description" className="py-8 text-muted-foreground leading-relaxed max-w-3xl">
-            <div className="prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: product.description }} />
+          <TabsContent value="description" className="py-8 text-muted-foreground leading-relaxed text-sm md:text-base">
+            <div className="prose dark:prose-invert max-w-none w-full break-words hyphens-none" dangerouslySetInnerHTML={{ __html: product.description }} />
           </TabsContent>
           <TabsContent value="reviews" className="py-8">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">

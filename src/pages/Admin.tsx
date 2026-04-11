@@ -28,6 +28,7 @@ import {
   Users,
   Star,
   RefreshCcw,
+  RefreshCw,
   Palette,
   Layout,
   Globe,
@@ -35,8 +36,12 @@ import {
   Monitor,
   FileText,
   Megaphone,
-  GripVertical
+  GripVertical,
+  Download,
+  Upload,
+  FileSpreadsheet
 } from 'lucide-react';
+import Papa from 'papaparse';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -45,9 +50,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '../components/ui/dialog';
-import { collection, query, getDocs, doc, setDoc, updateDoc, deleteDoc, orderBy, serverTimestamp, getDoc, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, updateDoc, deleteDoc, orderBy, serverTimestamp, getDoc, addDoc } from 'firebase/firestore';
 import { db, auth, logout } from '../firebase';
-import { Product, Order, Review, StoreSettings } from '../types';
+import { Product, Order, Review, StoreSettings, Collection } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 import { toast } from 'sonner';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -58,6 +63,241 @@ import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
 import { cn } from '../lib/utils';
+
+// --- Helpers ---
+
+const generateDynamicCollections = (tags: string[], category: string) => {
+  const dynamicCols: string[] = [];
+  if (!category) return dynamicCols;
+  
+  const catLower = category.toLowerCase();
+  
+  tags.forEach(tag => {
+    const tagLower = tag.toLowerCase();
+    // Avoid combining if the tag is already part of the category or vice versa
+    if (tagLower === catLower || catLower.includes(tagLower) || tagLower.includes(catLower)) {
+      const capitalizedTag = tag.charAt(0).toUpperCase() + tag.slice(1);
+      if (!dynamicCols.includes(capitalizedTag)) dynamicCols.push(capitalizedTag);
+      return;
+    }
+
+    // Create combined collection: Tag + Category (e.g., "Summer Tracksuits")
+    const combined = `${tag.charAt(0).toUpperCase() + tag.slice(1)} ${category}`;
+    if (!dynamicCols.includes(combined)) {
+      dynamicCols.push(combined);
+    }
+    
+    // Also add the tag itself as a collection
+    const capitalizedTag = tag.charAt(0).toUpperCase() + tag.slice(1);
+    if (!dynamicCols.includes(capitalizedTag)) {
+      dynamicCols.push(capitalizedTag);
+    }
+  });
+
+  // Add the category itself
+  if (!dynamicCols.includes(category)) {
+    dynamicCols.push(category);
+  }
+  
+  return dynamicCols;
+};
+
+const ensureCollectionsExist = async (collectionNames: string[]) => {
+  try {
+    for (const name of collectionNames) {
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const q = query(collection(db, 'collections'), where('name', '==', name));
+      const snap = await getDocs(q);
+      
+      if (snap.empty) {
+        await addDoc(collection(db, 'collections'), {
+          name,
+          slug,
+          createdAt: serverTimestamp(),
+          description: `Automatically generated collection for ${name}`
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Error ensuring collections exist:", error);
+  }
+};
+
+const sanitize = (obj: any): any => {
+  const newObj: any = {};
+  Object.keys(obj).forEach(key => {
+    if (obj[key] === undefined) return;
+    if (obj[key] !== null && typeof obj[key] === 'object' && !Array.isArray(obj[key]) && !(obj[key] instanceof Date)) {
+      newObj[key] = sanitize(obj[key]);
+    } else if (Array.isArray(obj[key])) {
+      newObj[key] = obj[key].map((item: any) => (typeof item === 'object' && item !== null) ? sanitize(item) : item);
+    } else {
+      newObj[key] = obj[key];
+    }
+  });
+  return newObj;
+};
+
+const importShopifyProducts = async (file: File, setImporting: (val: boolean) => void) => {
+  setImporting(true);
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: async (results) => {
+      const productsMap = new Map();
+      
+      results.data.forEach((row: any) => {
+        const handle = row['Handle'];
+        if (!handle) return;
+
+        if (!productsMap.has(handle)) {
+          const title = row['Title'] || 'Untitled Product';
+          const price = parseFloat(row['Variant Price']);
+          const compareAtPrice = parseFloat(row['Variant Compare At Price']);
+          const stock = parseInt(row['Variant Inventory Qty']);
+
+          productsMap.set(handle, {
+            title,
+            description: row['Body (HTML)'] || '',
+            category: row['Type'] || 'Uncategorized',
+            tags: row['Tags'] ? row['Tags'].split(',').map((t: string) => t.trim()) : [],
+            images: [],
+            variants: [],
+            slug: handle,
+            status: row['Published']?.toLowerCase() === 'true' ? 'Active' : 'Draft',
+            sku: row['Variant SKU'] || '',
+            price: isNaN(price) ? 0 : price,
+            compareAtPrice: isNaN(compareAtPrice) ? null : compareAtPrice,
+            stockQuantity: 0, // Initialize to 0, will be summed from variants
+            trackInventory: true,
+            continueSellingOutOfStock: false,
+            hasVariants: false,
+            isPhysical: true,
+            rating: 5,
+            reviewCount: 0,
+            createdAt: serverTimestamp(),
+            collections: []
+          });
+        }
+
+        const product = productsMap.get(handle);
+
+        // Add images
+        if (row['Image Src']) {
+          if (!product.images.includes(row['Image Src'])) {
+            product.images.push(row['Image Src']);
+          }
+        }
+
+        // Extract Size and Color from all 3 possible Shopify options
+        let size = 'Standard';
+        let color = 'Default';
+
+        const options = [
+          { name: row['Option1 Name'], value: row['Option1 Value'] },
+          { name: row['Option2 Name'], value: row['Option2 Value'] },
+          { name: row['Option3 Name'], value: row['Option3 Value'] }
+        ];
+
+        const sizeKeywords = ['size', 'sizing', 'waist', 'length'];
+        const colorKeywords = ['color', 'colour', 'shade', 'finish', 'pattern', 'material'];
+        const commonSizes = ['s', 'm', 'l', 'xl', 'xxl', '2xl', '3xl', '4xl', '5xl', 'small', 'medium', 'large', 'extra large'];
+
+        options.forEach(opt => {
+          if (!opt.value) return;
+          const val = opt.value.trim();
+          if (val === 'Default Title' || val === '') return;
+          
+          const name = (opt.name || '').toLowerCase();
+          const valLower = val.toLowerCase();
+          
+          if (sizeKeywords.some(k => name.includes(k))) {
+            size = val;
+          } else if (colorKeywords.some(k => name.includes(k))) {
+            color = val;
+          } else if (commonSizes.includes(valLower) || /^\d+(\.\d+)?$/.test(val)) {
+            if (size === 'Standard') size = val;
+          } else {
+            // Fallback: if we don't have a size yet, take the first option value
+            if (size === 'Standard') size = val;
+            else if (color === 'Default') color = val;
+          }
+        });
+
+        // If color is still default, try to extract from title
+        if (color === 'Default') {
+          const commonColors = ['Black', 'White', 'Red', 'Blue', 'Green', 'Yellow', 'Pink', 'Purple', 'Orange', 'Grey', 'Gray', 'Brown', 'Navy', 'Maroon', 'Beige', 'Olive'];
+          const foundColor = commonColors.find(c => product.title.toLowerCase().includes(c.toLowerCase()));
+          if (foundColor) color = foundColor;
+        }
+
+        // Add variant if it has size or color or SKU
+        const isDefaultTitle = row['Option1 Value'] === 'Default Title';
+        if (row['Variant SKU'] || (!isDefaultTitle && row['Option1 Value']) || row['Option2 Value'] || row['Option3 Value']) {
+          product.hasVariants = !isDefaultTitle;
+          const vPrice = parseFloat(row['Variant Price']);
+          const vStock = parseInt(row['Variant Inventory Qty']);
+          
+          product.variants.push({
+            id: Math.random().toString(36).substr(2, 9),
+            size,
+            color,
+            sku: row['Variant SKU'] || '',
+            price: isNaN(vPrice) ? product.price : vPrice,
+            stock: isNaN(vStock) ? 0 : vStock
+          });
+
+          // Update total stock quantity
+          if (!isNaN(vStock)) {
+            product.stockQuantity = (product.stockQuantity || 0) + vStock;
+          }
+        }
+
+        // Generate dynamic collections from tags and category
+        const dynamicCols: string[] = generateDynamicCollections(product.tags, product.category);
+        product.collections = Array.from(new Set([...(product.collections || []), ...dynamicCols]));
+      });
+
+      // Save to Firestore
+      try {
+        let count = 0;
+        const allImportedCols = new Set<string>();
+        for (const [handle, product] of productsMap.entries()) {
+          // Collect all collection names for automatic generation
+          if (product.collections) {
+            product.collections.forEach((c: string) => allImportedCols.add(c));
+          }
+
+          // Check if product exists by slug
+          const q = query(collection(db, 'products'), where('slug', '==', handle));
+          const snap = await getDocs(q);
+          
+          if (snap.empty) {
+            await addDoc(collection(db, 'products'), sanitize(product));
+            count++;
+          }
+        }
+        
+        // Automatically generate collection documents
+        if (allImportedCols.size > 0) {
+          await ensureCollectionsExist(Array.from(allImportedCols));
+        }
+
+        toast.success(`Successfully imported ${count} new products!`);
+      } catch (error) {
+        console.error(error);
+        toast.error('Error saving imported products');
+      } finally {
+        setImporting(false);
+      }
+    },
+    error: (error) => {
+      console.error(error);
+      toast.error('Error parsing CSV file');
+      setImporting(false);
+    }
+  });
+};
 
 // --- Admin Components ---
 
@@ -198,20 +438,58 @@ function Dashboard() {
 }
 
 function ProductsManager() {
-  const { settings } = useSettings();
+  const { settings, collections } = useSettings();
   const [products, setProducts] = useState<Product[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [currentProduct, setCurrentProduct] = useState<Partial<Product> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
 
   const fetchProducts = async () => {
     setLoading(true);
-    const snapshot = await getDocs(query(collection(db, 'products'), orderBy('createdAt', 'desc')));
-    setProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Product)));
-    setLoading(false);
+    try {
+      const snapshot = await getDocs(query(collection(db, 'products'), orderBy('createdAt', 'desc')));
+      setProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Product)));
+    } catch (error) {
+      console.error(error);
+      toast.error('Error fetching products');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchProducts(); }, []);
+
+  const syncAllProductCollections = async () => {
+    toast.info('Syncing collections for all products...');
+    try {
+      const snap = await getDocs(collection(db, 'products'));
+      let updatedCount = 0;
+      const allDiscoveredNames = new Set<string>();
+      
+      for (const docSnap of snap.docs) {
+        const p = docSnap.data() as Product;
+        const dynamicCols = generateDynamicCollections(p.tags || [], p.category || '');
+        const currentCols = p.collections || [];
+        
+        const allCols = Array.from(new Set([...currentCols, ...dynamicCols]));
+        allCols.forEach(c => allDiscoveredNames.add(c));
+        
+        if (JSON.stringify(allCols.sort()) !== JSON.stringify(currentCols.sort())) {
+          await updateDoc(doc(db, 'products', docSnap.id), { collections: allCols });
+          updatedCount++;
+        }
+      }
+      
+      await ensureCollectionsExist(Array.from(allDiscoveredNames));
+      
+      toast.success(`Synced ${updatedCount} products and updated collections list`);
+      fetchProducts();
+    } catch (error) {
+      console.error(error);
+      toast.error('Error syncing collections');
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -224,6 +502,17 @@ function ProductsManager() {
       const variants = currentProduct.variants || [];
       const totalVariantStock = variants.reduce((sum, v) => sum + (v.stock || 0), 0);
       
+      const tags = currentProduct.tags || [];
+      const category = currentProduct.category || '';
+      const dynamicCollections = generateDynamicCollections(tags, category);
+      const manualCollections = currentProduct.collections || [];
+      
+      // Merge manual and dynamic collections, ensuring uniqueness
+      const allCollections = Array.from(new Set([...manualCollections, ...dynamicCollections]));
+
+      // Ensure these collections exist in the collections collection
+      await ensureCollectionsExist(allCollections);
+
       const productData = {
         ...currentProduct,
         createdAt: currentProduct.id ? currentProduct.createdAt : serverTimestamp(),
@@ -233,8 +522,8 @@ function ProductsManager() {
         status: currentProduct.status || 'Active',
         images: currentProduct.images || [],
         variants: variants,
-        tags: currentProduct.tags || [],
-        collections: currentProduct.collections || [],
+        tags: tags,
+        collections: allCollections,
         stockQuantity: currentProduct.hasVariants ? totalVariantStock : (currentProduct.stockQuantity || 0),
         trackInventory: currentProduct.trackInventory ?? true,
         continueSellingOutOfStock: currentProduct.continueSellingOutOfStock ?? false,
@@ -260,7 +549,6 @@ function ProductsManager() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this product?')) return;
     try {
       await deleteDoc(doc(db, 'products', id));
       toast.success('Product deleted');
@@ -724,11 +1012,11 @@ function ProductsManager() {
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {settings.headerMenu.filter(m => m.path.includes('category=') || m.label !== 'Home').map(m => (
-                        <SelectItem key={m.id} value={m.label}>{m.label}</SelectItem>
+                      {collections.map(col => (
+                        <SelectItem key={col.id} value={col.name}>{col.name}</SelectItem>
                       ))}
-                      {/* Fallback if menu is empty */}
-                      {settings.headerMenu.length === 0 && (
+                      {/* Fallback if no collections exist */}
+                      {collections.length === 0 && (
                         <>
                           <SelectItem value="Tracksuits">Tracksuits</SelectItem>
                           <SelectItem value="Trousers">Trousers</SelectItem>
@@ -787,30 +1075,55 @@ function ProductsManager() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Products</h2>
-        <Button onClick={() => {
-          setCurrentProduct({
-            title: '',
-            description: '',
-            price: 0,
-            category: 'Tracksuits',
-            images: [],
-            variants: [],
-            status: 'Active',
-            isPhysical: true,
-            trackInventory: true,
-            continueSellingOutOfStock: false,
-            tags: [],
-            collections: [],
-            hasVariants: false,
-            vendor: 'BS Stocks'
-          });
-          setIsEditing(true);
-        }} className="bg-blue-600 hover:bg-blue-700 text-white">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Product
-        </Button>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h2 className="text-2xl font-bold">Products ({products.length})</h2>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={syncAllProductCollections}>
+            <RefreshCw className="h-4 w-4 mr-2" /> Sync Collections
+          </Button>
+          <Button variant="outline" onClick={() => {
+            const csv = Papa.unparse(products);
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'products-export.csv';
+            a.click();
+          }}>
+            <Download className="h-4 w-4 mr-2" /> Export CSV
+          </Button>
+          <label className="cursor-pointer">
+            <Input type="file" accept=".csv" className="hidden" onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) importShopifyProducts(file, setImporting).then(() => fetchProducts());
+            }} />
+            <Button variant="outline" disabled={importing}>
+              <Upload className="h-4 w-4 mr-2" /> {importing ? 'Importing...' : 'Shopify Import'}
+            </Button>
+          </label>
+          <Button onClick={() => {
+            setCurrentProduct({
+              title: '',
+              description: '',
+              price: 0,
+              category: 'Tracksuits',
+              images: [],
+              variants: [],
+              status: 'Active',
+              isPhysical: true,
+              trackInventory: true,
+              continueSellingOutOfStock: false,
+              tags: [],
+              collections: [],
+              hasVariants: false,
+              vendor: 'BS Stocks'
+            });
+            setIsEditing(true);
+          }} className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Product
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -911,7 +1224,6 @@ function OrdersManager() {
   };
 
   const deleteOrder = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this order?')) return;
     try {
       await deleteDoc(doc(db, 'orders', id));
       toast.success('Order deleted');
@@ -1034,6 +1346,16 @@ function StoreSettingsManager() {
     footerAdEnabled: false,
     inPageAdEnabled: false,
     socialLinks: { facebook: '', instagram: '', twitter: '', youtube: '' },
+    footerText: '',
+    newsletterBlock: {
+      enabled: true,
+      title: 'GET 20% OFF YOUR FIRST ORDER',
+      description: 'Join our newsletter and stay updated with the latest drops, exclusive offers, and fashion tips.',
+      buttonText: 'Subscribe',
+      imageUrl: 'https://picsum.photos/seed/newsletter/800/600',
+      backgroundColor: '#dc2626',
+      textColor: '#ffffff'
+    },
     defaultSeoTitle: 'BS Stocks | Premium Fashion',
     defaultSeoDescription: 'The best place for premium tracksuits and fashion.',
     trackingCode: '',
@@ -1080,6 +1402,7 @@ function StoreSettingsManager() {
           <TabsTrigger value="theme" className="gap-2"><Palette className="h-4 w-4" /> Theme</TabsTrigger>
           <TabsTrigger value="navigation" className="gap-2"><Menu className="h-4 w-4" /> Navigation</TabsTrigger>
           <TabsTrigger value="social" className="gap-2"><Share2 className="h-4 w-4" /> Social</TabsTrigger>
+          <TabsTrigger value="footer" className="gap-2"><FileText className="h-4 w-4" /> Footer</TabsTrigger>
           <TabsTrigger value="ads" className="gap-2"><Megaphone className="h-4 w-4" /> Ads</TabsTrigger>
           <TabsTrigger value="advanced" className="gap-2"><Monitor className="h-4 w-4" /> Advanced</TabsTrigger>
         </TabsList>
@@ -1302,6 +1625,88 @@ function StoreSettingsManager() {
                   </div>
                 </CardContent>
               </Card>
+
+              <Card>
+                <CardHeader><CardTitle>Newsletter Section</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label>Enable Newsletter Block</Label>
+                    <input 
+                      type="checkbox" 
+                      checked={settings.newsletterBlock?.enabled ?? true} 
+                      onChange={e => setSettings(s => ({ ...s, newsletterBlock: { ...(s.newsletterBlock || {}), enabled: e.target.checked } }))}
+                      className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Title</Label>
+                      <Input 
+                        value={settings.newsletterBlock?.title || ''} 
+                        onChange={e => setSettings(s => ({ ...s, newsletterBlock: { ...(s.newsletterBlock || {}), title: e.target.value } }))}
+                        placeholder="GET 20% OFF YOUR FIRST ORDER"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Button Text</Label>
+                      <Input 
+                        value={settings.newsletterBlock?.buttonText || ''} 
+                        onChange={e => setSettings(s => ({ ...s, newsletterBlock: { ...(s.newsletterBlock || {}), buttonText: e.target.value } }))}
+                        placeholder="Subscribe"
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Description</Label>
+                      <textarea 
+                        className="w-full min-h-[80px] p-3 rounded-md border bg-background"
+                        value={settings.newsletterBlock?.description || ''} 
+                        onChange={e => setSettings(s => ({ ...s, newsletterBlock: { ...(s.newsletterBlock || {}), description: e.target.value } }))}
+                        placeholder="Join our newsletter and stay updated..."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Image URL</Label>
+                      <Input 
+                        value={settings.newsletterBlock?.imageUrl || ''} 
+                        onChange={e => setSettings(s => ({ ...s, newsletterBlock: { ...(s.newsletterBlock || {}), imageUrl: e.target.value } }))}
+                        placeholder="https://..."
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-2">
+                        <Label>Background Color</Label>
+                        <div className="flex gap-2">
+                          <Input 
+                            type="color" 
+                            className="w-12 h-10 p-1" 
+                            value={settings.newsletterBlock?.backgroundColor || '#dc2626'} 
+                            onChange={e => setSettings(s => ({ ...s, newsletterBlock: { ...(s.newsletterBlock || {}), backgroundColor: e.target.value } }))} 
+                          />
+                          <Input 
+                            value={settings.newsletterBlock?.backgroundColor || '#dc2626'} 
+                            onChange={e => setSettings(s => ({ ...s, newsletterBlock: { ...(s.newsletterBlock || {}), backgroundColor: e.target.value } }))} 
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Text Color</Label>
+                        <div className="flex gap-2">
+                          <Input 
+                            type="color" 
+                            className="w-12 h-10 p-1" 
+                            value={settings.newsletterBlock?.textColor || '#ffffff'} 
+                            onChange={e => setSettings(s => ({ ...s, newsletterBlock: { ...(s.newsletterBlock || {}), textColor: e.target.value } }))} 
+                          />
+                          <Input 
+                            value={settings.newsletterBlock?.textColor || '#ffffff'} 
+                            onChange={e => setSettings(s => ({ ...s, newsletterBlock: { ...(s.newsletterBlock || {}), textColor: e.target.value } }))} 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
 
@@ -1490,6 +1895,24 @@ function StoreSettingsManager() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="footer">
+            <Card>
+              <CardHeader><CardTitle>Footer Settings</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Lower Footer Text</Label>
+                  <textarea 
+                    className="w-full min-h-[100px] p-3 rounded-md border bg-background"
+                    value={settings.footerText} 
+                    onChange={e => setSettings(s => ({ ...s, footerText: e.target.value }))}
+                    placeholder="e.g. Premium fashion clothing store. Quality and style guaranteed."
+                  />
+                  <p className="text-xs text-muted-foreground">This text appears in the footer under the store name.</p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="ads">
             <Card>
               <CardHeader><CardTitle>Ads & Monetization</CardTitle></CardHeader>
@@ -1573,6 +1996,182 @@ function StoreSettingsManager() {
   );
 }
 
+function CollectionsManager() {
+  const { collections } = useSettings();
+  const [isEditing, setIsEditing] = useState(false);
+  const [currentCollection, setCurrentCollection] = useState<Partial<Collection> | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentCollection?.name) return toast.error('Name is required');
+
+    setLoading(true);
+    try {
+      const colData = {
+        ...currentCollection,
+        slug: currentCollection.slug || currentCollection.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+        createdAt: currentCollection.id ? currentCollection.createdAt : serverTimestamp(),
+      };
+
+      if (currentCollection.id) {
+        await updateDoc(doc(db, 'collections', currentCollection.id), colData);
+        toast.success('Collection updated');
+      } else {
+        await addDoc(collection(db, 'collections'), colData);
+        toast.success('Collection created');
+      }
+      setIsEditing(false);
+      setCurrentCollection(null);
+    } catch (error) {
+      toast.error('Error saving collection');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'collections', id));
+      toast.success('Collection deleted');
+    } catch (error) {
+      toast.error('Error deleting collection');
+    }
+  };
+
+  const handleSeed = async () => {
+    if (collections.length > 0) return toast.info('Collections already exist');
+    setLoading(true);
+    try {
+      const initial = ['Tracksuits', 'Trousers', 'T-Shirts'];
+      for (const name of initial) {
+        await addDoc(collection(db, 'collections'), {
+          name,
+          slug: name.toLowerCase().replace(/ /g, '-'),
+          createdAt: serverTimestamp()
+        });
+      }
+      toast.success('Initial collections seeded');
+    } catch (error) {
+      toast.error('Error seeding collections');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="outline" size="icon" onClick={() => setIsEditing(false)}><X className="h-4 w-4" /></Button>
+            <h2 className="text-2xl font-bold">{currentCollection?.id ? 'Edit Collection' : 'New Collection'}</h2>
+          </div>
+          <Button onClick={handleSave} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white">
+            {loading ? 'Saving...' : 'Save Collection'}
+          </Button>
+        </div>
+
+        <Card>
+          <CardHeader><CardTitle>Collection Details</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Collection Name *</Label>
+              <Input 
+                value={currentCollection?.name || ''} 
+                onChange={e => setCurrentCollection(p => ({ ...p, name: e.target.value }))}
+                placeholder="e.g. Tracksuits"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>URL Slug</Label>
+              <Input 
+                value={currentCollection?.slug || ''} 
+                onChange={e => setCurrentCollection(p => ({ ...p, slug: e.target.value }))}
+                placeholder="tracksuits"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <textarea 
+                className="w-full min-h-[100px] p-3 rounded-md border bg-background"
+                value={currentCollection?.description || ''} 
+                onChange={e => setCurrentCollection(p => ({ ...p, description: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Image URL (Optional)</Label>
+              <Input 
+                value={currentCollection?.image || ''} 
+                onChange={e => setCurrentCollection(p => ({ ...p, image: e.target.value }))}
+                placeholder="https://picsum.photos/..."
+              />
+              <p className="text-xs text-muted-foreground">If left blank, a random product image from this collection will be used.</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">Collections</h2>
+        <div className="flex gap-2">
+          {collections.length === 0 && (
+            <Button variant="outline" onClick={handleSeed} disabled={loading}>
+              Seed Initial
+            </Button>
+          )}
+          <Button onClick={() => {
+            setCurrentCollection({ name: '', slug: '' });
+            setIsEditing(true);
+          }} className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Plus className="h-4 w-4 mr-2" /> Add Collection
+          </Button>
+        </div>
+      </div>
+
+      <Card>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Slug</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {collections.length === 0 ? (
+                <TableRow><TableCell colSpan={3} className="text-center py-10">No collections found</TableCell></TableRow>
+              ) : (
+                collections.map(col => (
+                  <TableRow key={col.id}>
+                    <TableCell className="font-bold">{col.name}</TableCell>
+                    <TableCell className="text-muted-foreground">/products?category={col.name}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => { setCurrentCollection(col); setIsEditing(true); }}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(col.id)}>
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function PagesManager() {
   const [pages, setPages] = useState<StandardPage[]>([]);
   const [isEditing, setIsEditing] = useState(false);
@@ -1615,10 +2214,42 @@ function PagesManager() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this page?')) return;
     await deleteDoc(doc(db, 'pages', id));
     toast.success('Page deleted');
     fetchPages();
+  };
+
+  const handleSeedCorePages = async () => {
+    setLoading(true);
+    try {
+      const corePages = [
+        { title: 'About Us', slug: 'about-us', content: '<p>Welcome to our store. We are dedicated to providing the best fashion clothing...</p>' },
+        { title: 'Contact Us', slug: 'contact-us', content: '<p>Have questions? Reach out to us using the form below or via our contact details.</p>' },
+        { title: 'Shipping Policy', slug: 'shipping-policy', content: '<p>We offer fast and reliable shipping to all our customers...</p>' },
+        { title: 'Privacy Policy', slug: 'privacy-policy', content: '<p>Your privacy is important to us. We collect and use your data only to improve your experience...</p>' },
+      ];
+
+      for (const page of corePages) {
+        const q = query(collection(db, 'pages'), where('slug', '==', page.slug));
+        const snap = await getDocs(q);
+        if (snap.empty) {
+          await addDoc(collection(db, 'pages'), {
+            ...page,
+            status: 'Published',
+            seoTitle: `${page.title} | BS Stocks`,
+            seoDescription: `Learn more about our ${page.title.toLowerCase()}.`,
+            createdAt: serverTimestamp()
+          });
+        }
+      }
+      toast.success('Core pages seeded');
+      fetchPages();
+    } catch (error) {
+      console.error(error);
+      toast.error('Error seeding core pages');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (isEditing) {
@@ -1704,12 +2335,19 @@ function PagesManager() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Standard Pages</h2>
-        <Button onClick={() => {
-          setCurrentPage({ title: '', content: '', slug: '', status: 'Draft' });
-          setIsEditing(true);
-        }} className="bg-blue-600 hover:bg-blue-700 text-white">
-          <Plus className="h-4 w-4 mr-2" /> Create Page
-        </Button>
+        <div className="flex gap-2">
+          {pages.length === 0 && (
+            <Button variant="outline" onClick={handleSeedCorePages} disabled={loading}>
+              Seed Core Pages
+            </Button>
+          )}
+          <Button onClick={() => {
+            setCurrentPage({ title: '', content: '', slug: '', status: 'Draft' });
+            setIsEditing(true);
+          }} className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Plus className="h-4 w-4 mr-2" /> Create Page
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -1755,6 +2393,137 @@ function PagesManager() {
 );
 }
 
+// --- Import/Export Manager ---
+
+function ImportExportManager() {
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleShopifyImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) importShopifyProducts(file, setImporting);
+    if (e.target) e.target.value = '';
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const snap = await getDocs(collection(db, 'products'));
+      const products = snap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+      
+      const exportData = products.map(p => ({
+        Handle: p.slug,
+        Title: p.title,
+        'Body (HTML)': p.description,
+        Vendor: p.vendor,
+        Type: p.category,
+        Tags: p.tags.join(', '),
+        Published: p.status === 'Active' ? 'TRUE' : 'FALSE',
+        'Variant SKU': p.sku,
+        'Variant Price': p.price,
+        'Variant Compare At Price': p.compareAtPrice || '',
+        'Variant Inventory Qty': p.stockQuantity,
+        'Image Src': p.images[0] || '',
+        'SEO Title': p.seoTitle || '',
+        'SEO Description': p.seoDescription || ''
+      }));
+
+      const csv = Papa.unparse(exportData);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `products_export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success('Products exported successfully');
+    } catch (error) {
+      console.error(error);
+      toast.error('Error exporting products');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">Import & Export</h2>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Import Shopify CSV */}
+        <Card className="border-2 border-dashed border-muted hover:border-primary/50 transition-colors">
+          <CardHeader>
+            <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
+              <Upload className="h-6 w-6 text-green-600" />
+            </div>
+            <CardTitle>Import Shopify Products</CardTitle>
+            <CardDescription>
+              Upload a Shopify-exported CSV file to bulk import products, variants, and images.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="p-4 bg-muted/50 rounded-lg text-xs space-y-2">
+                <p className="font-bold">Supported Columns:</p>
+                <ul className="list-disc list-inside grid grid-cols-2 gap-1">
+                  <li>Handle (Slug)</li>
+                  <li>Title</li>
+                  <li>Body (HTML)</li>
+                  <li>Vendor & Type</li>
+                  <li>Variant Price</li>
+                  <li>Variant SKU</li>
+                  <li>Image Src</li>
+                </ul>
+              </div>
+              <div className="relative">
+                <Input 
+                  type="file" 
+                  accept=".csv" 
+                  onChange={handleShopifyImport}
+                  disabled={importing}
+                  className="cursor-pointer opacity-0 absolute inset-0 z-10"
+                />
+                <Button variant="outline" className="w-full gap-2" disabled={importing}>
+                  {importing ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                  {importing ? 'Processing CSV...' : 'Choose Shopify CSV File'}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Export Products */}
+        <Card className="border-2 border-dashed border-muted hover:border-primary/50 transition-colors">
+          <CardHeader>
+            <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center mb-4">
+              <Download className="h-6 w-6 text-blue-600" />
+            </div>
+            <CardTitle>Export All Products</CardTitle>
+            <CardDescription>
+              Download your entire product catalog as a CSV file for backup or bulk editing.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button 
+              variant="outline" 
+              className="w-full gap-2" 
+              onClick={handleExport}
+              disabled={exporting}
+            >
+              {exporting ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {exporting ? 'Generating CSV...' : 'Download Products CSV'}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 // --- Admin Layout ---
 
 export default function Admin() {
@@ -1783,7 +2552,9 @@ export default function Admin() {
   const menuItems = [
     { icon: <LayoutDashboard className="h-5 w-5" />, label: 'Dashboard', path: '/admin' },
     { icon: <Package className="h-5 w-5" />, label: 'Products', path: '/admin/products' },
+    { icon: <Layout className="h-5 w-5" />, label: 'Collections', path: '/admin/collections' },
     { icon: <ShoppingBag className="h-5 w-5" />, label: 'Orders', path: '/admin/orders' },
+    { icon: <FileSpreadsheet className="h-5 w-5" />, label: 'Import/Export', path: '/admin/import-export' },
     { icon: <FileText className="h-5 w-5" />, label: 'Pages', path: '/admin/pages' },
     { icon: <Settings className="h-5 w-5" />, label: 'Settings', path: '/admin/settings' },
   ];
@@ -1860,7 +2631,9 @@ export default function Admin() {
         <Routes>
           <Route index element={<Dashboard />} />
           <Route path="products" element={<ProductsManager />} />
+          <Route path="collections" element={<CollectionsManager />} />
           <Route path="orders" element={<OrdersManager />} />
+          <Route path="import-export" element={<ImportExportManager />} />
           <Route path="pages" element={<PagesManager />} />
           <Route path="settings" element={<StoreSettingsManager />} />
         </Routes>

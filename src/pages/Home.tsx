@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, query, limit, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, limit, getDocs, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Product } from '../types';
+import { Product, Collection } from '../types';
 import ProductCard from '../components/ProductCard';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -12,9 +12,17 @@ import { Skeleton } from '../components/ui/skeleton';
 import { useSettings } from '../contexts/SettingsContext';
 import { cn } from '../lib/utils';
 
+interface CategoryDisplay {
+  name: string;
+  image: string;
+  path: string;
+}
+
 export default function Home() {
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<CategoryDisplay[]>([]);
   const [loading, setLoading] = useState(true);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const { settings } = useSettings();
   const [currentSlide, setCurrentSlide] = useState(0);
 
@@ -40,14 +48,49 @@ export default function Home() {
         setLoading(false);
       }
     };
-    fetchProducts();
-  }, []);
 
-  const categories = [
-    { name: 'Tracksuits', image: 'https://picsum.photos/seed/tracksuit/800/1000', path: '/products?category=Tracksuits' },
-    { name: 'Trousers', image: 'https://picsum.photos/seed/trousers/800/1000', path: '/products?category=Trousers' },
-    { name: 'T-Shirts', image: 'https://picsum.photos/seed/tshirt/800/1000', path: '/products?category=T-Shirts' },
-  ];
+    const fetchCategories = async () => {
+      try {
+        const colSnap = await getDocs(collection(db, 'collections'));
+        const cols = colSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Collection));
+        
+        const displayCols: CategoryDisplay[] = await Promise.all(cols.map(async (col) => {
+          let image = col.image;
+          
+          if (!image) {
+            // Fetch products from this collection to get a random image
+            const prodQuery = query(
+              collection(db, 'products'), 
+              where('collections', 'array-contains', col.name), 
+              limit(5)
+            );
+            const prodSnap = await getDocs(prodQuery);
+            if (!prodSnap.empty) {
+              const docs = prodSnap.docs;
+              const randomIdx = Math.floor(Math.random() * docs.length);
+              const prodData = docs[randomIdx].data() as Product;
+              image = prodData.images[0];
+            }
+          }
+          
+          return {
+            name: col.name,
+            image: image || `https://picsum.photos/seed/${col.name}/800/1000`,
+            path: `/products?category=${col.name}`
+          };
+        }));
+        
+        setCategories(displayCols);
+      } catch (error) {
+        console.error("Error fetching categories:", error);
+      } finally {
+        setCategoriesLoading(false);
+      }
+    };
+
+    fetchProducts();
+    fetchCategories();
+  }, []);
 
   return (
     <div className="space-y-20 pb-20">
@@ -198,22 +241,32 @@ export default function Home() {
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {categories.map((cat, i) => (
-            <Link key={cat.name} to={cat.path} className="group relative aspect-[4/5] overflow-hidden rounded-2xl">
-              <img 
-                src={cat.image} 
-                alt={cat.name} 
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-8">
-                <h3 className="text-3xl font-bold text-white mb-2">{cat.name}</h3>
-                <div className="flex items-center text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  Explore Collection <ArrowRight className="ml-2 h-4 w-4" />
+          {categoriesLoading ? (
+            Array(3).fill(0).map((_, i) => (
+              <Skeleton key={i} className="aspect-[4/5] w-full rounded-2xl" />
+            ))
+          ) : categories.length > 0 ? (
+            categories.map((cat, i) => (
+              <Link key={cat.name} to={cat.path} className="group relative aspect-[4/5] overflow-hidden rounded-2xl">
+                <img 
+                  src={cat.image} 
+                  alt={cat.name} 
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-8">
+                  <h3 className="text-3xl font-bold text-white mb-2">{cat.name}</h3>
+                  <div className="flex items-center text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    Explore Collection <ArrowRight className="ml-2 h-4 w-4" />
+                  </div>
                 </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            ))
+          ) : (
+            <div className="col-span-full text-center py-10 bg-muted rounded-2xl">
+              <p className="text-muted-foreground">No categories found.</p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -254,31 +307,57 @@ export default function Home() {
       </section>
 
       {/* Promo Banner */}
-      <section className="container mx-auto px-4">
-        <div className="relative rounded-3xl overflow-hidden bg-primary text-primary-foreground p-12 md:p-20 flex flex-col md:flex-row items-center justify-between gap-10">
-          <div className="space-y-6 max-w-xl text-center md:text-left">
-            <h2 className="text-4xl md:text-6xl font-bold tracking-tighter">GET 20% OFF YOUR FIRST ORDER</h2>
-            <p className="text-lg opacity-90">Join our newsletter and stay updated with the latest drops, exclusive offers, and fashion tips.</p>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <input 
-                type="email" 
-                placeholder="Enter your email" 
-                className="bg-white/20 backdrop-blur-md border border-white/30 rounded-full px-6 py-3 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/50 flex-grow"
-              />
-              <Button size="lg" variant="secondary" className="rounded-full px-8">Subscribe</Button>
+      {settings.newsletterBlock?.enabled && (
+        <section className="container mx-auto px-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true }}
+            className="relative rounded-[40px] overflow-hidden p-8 md:p-16 flex flex-col md:flex-row items-center justify-between gap-10"
+            style={{ 
+              backgroundColor: settings.newsletterBlock.backgroundColor || '#dc2626',
+              color: settings.newsletterBlock.textColor || '#ffffff'
+            }}
+          >
+            <div className="space-y-6 max-w-xl text-center md:text-left z-10">
+              <h2 className="text-4xl md:text-6xl font-bold tracking-tighter uppercase leading-tight">
+                {settings.newsletterBlock.title}
+              </h2>
+              <p className="text-lg opacity-90 font-medium">
+                {settings.newsletterBlock.description}
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                <input 
+                  type="email" 
+                  placeholder="Enter your email" 
+                  className="bg-white/20 backdrop-blur-md border border-white/30 rounded-full px-6 py-4 text-white placeholder:text-white/70 focus:outline-none focus:ring-2 focus:ring-white/50 flex-grow"
+                />
+                <Button 
+                  size="lg" 
+                  variant="secondary" 
+                  className="rounded-full px-10 font-bold h-auto py-4 bg-white text-black hover:bg-gray-100 border-none"
+                >
+                  {settings.newsletterBlock.buttonText}
+                </Button>
+              </div>
             </div>
-          </div>
-          <div className="relative w-64 h-64 md:w-80 md:h-80">
-            <div className="absolute inset-0 bg-white/10 rounded-full animate-pulse" />
-            <img 
-              src="https://picsum.photos/seed/promo/500/500" 
-              alt="Promo" 
-              className="rounded-full w-full h-full object-cover border-4 border-white/20"
-              referrerPolicy="no-referrer"
-            />
-          </div>
-        </div>
-      </section>
+            <div className="relative w-full max-w-[300px] aspect-[3/4] md:aspect-[2/3] z-10">
+              <div className="absolute inset-0 border-[6px] border-white/20 rounded-[150px] overflow-hidden">
+                <img 
+                  src={settings.newsletterBlock.imageUrl} 
+                  alt="Promo" 
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            </div>
+            
+            {/* Decorative elements */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl" />
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-black/5 rounded-full -ml-32 -mb-32 blur-3xl" />
+          </motion.div>
+        </section>
+      )}
     </div>
   );
 }

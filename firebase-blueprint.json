@@ -80,6 +80,34 @@
       },
       "required": ["productId", "userName", "rating", "status"]
     },
+    "Collection": {
+      "title": "Collection",
+      "description": "A product category or grouping",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "description": { "type": "string" },
+        "image": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "slug"]
+    },
+    "Page": {
+      "title": "Page",
+      "description": "A standard content page",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "slug": { "type": "string" },
+        "seoTitle": { "type": "string" },
+        "seoDescription": { "type": "string" },
+        "status": { "type": "string", "enum": ["Draft", "Published"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "slug", "status"]
+    },
     "StoreSettings": {
       "title": "Store Settings",
       "description": "Global store configuration",
@@ -104,6 +132,14 @@
     "/reviews/{reviewId}": {
       "schema": "Review",
       "description": "Product reviews"
+    },
+    "/collections/{collectionId}": {
+      "schema": "Collection",
+      "description": "Product categories"
+    },
+    "/pages/{pageId}": {
+      "schema": "Page",
+      "description": "Content pages"
     },
     "/settings/config": {
       "schema": "StoreSettings",

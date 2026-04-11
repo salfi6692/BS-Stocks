@@ -19,7 +19,7 @@ export default function Footer() {
           <div className="space-y-4">
             <h3 className="text-xl font-bold tracking-tighter uppercase">{settings.storeName}</h3>
             <p className="text-sm text-muted-foreground">
-              {settings.tagline}
+              {settings.footerText || settings.tagline}
             </p>
             <div className="flex gap-4">
               {settings.socialLinks.facebook && (

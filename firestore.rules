@@ -18,6 +18,12 @@ service cloud.firestore {
     // Collection: settings
     // Fields: storeName, storeDescription, logoUrl, faviconUrl
     //
+    // Collection: collections
+    // Fields: name, slug, description, image, createdAt
+    //
+    // Collection: pages
+    // Fields: title, content, slug, seoTitle, seoDescription, status, createdAt
+    //
     // ===============================================================
 
     // Helper Functions
@@ -28,23 +34,33 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && (
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        request.auth.token.email == "salfi6692@gmail.com"
+        (request.auth.token.email == "salfi6692@gmail.com" && request.auth.token.email_verified == true)
       );
     }
 
     function isValidProduct(data) {
       return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
              data.price is number && data.price >= 0 &&
-             data.category in ['Tracksuits', 'Trousers', 'T-Shirts'] &&
              data.status in ['Draft', 'Active'] &&
              data.slug is string;
+    }
+
+    function isValidCollection(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.slug is string && data.slug.size() > 0;
+    }
+
+    function isValidPage(data) {
+      return data.title is string && data.title.size() > 0 &&
+             data.slug is string && data.slug.size() > 0 &&
+             data.status in ['Draft', 'Published'];
     }
 
     function isValidOrder(data) {
       return data.customerName is string && data.customerName.size() > 0 &&
              data.customerEmail is string && data.customerEmail.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
              data.totalAmount is number && data.totalAmount >= 0 &&
-             data.status in ['Pending', 'Confirmed', 'Shipped', 'Delivered'] &&
+             data.status in ['Pending', 'Confirmed', 'Shipped', 'Delivered', 'Cancelled'] &&
              data.paymentMethod == 'COD';
     }
 
@@ -64,6 +80,16 @@ service cloud.firestore {
 
     match /products/{productId} {
       allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /collections/{collectionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /pages/{pageId} {
+      allow read: if resource.data.status == 'Published' || isAdmin();
       allow write: if isAdmin();
     }
 

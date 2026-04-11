@@ -57,7 +57,7 @@ export default function StandardPageView() {
     <div className="container mx-auto px-4 py-12 max-w-4xl">
       <h1 className="text-4xl font-bold mb-8 tracking-tighter">{page.title}</h1>
       <div 
-        className="prose prose-lg dark:prose-invert max-w-none"
+        className="prose prose-lg dark:prose-invert max-w-none w-full break-words hyphens-none"
         dangerouslySetInnerHTML={{ __html: page.content }}
       />
     </div>

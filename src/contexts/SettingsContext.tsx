@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { StoreSettings } from '../types';
+import { StoreSettings, Collection, MenuItem } from '../types';
 
 interface SettingsContextType {
   settings: StoreSettings;
+  collections: Collection[];
   loading: boolean;
 }
 
@@ -14,7 +15,7 @@ const defaultSettings: StoreSettings = {
   contactEmail: '',
   contactPhone: '',
   address: '',
-  currency: 'PKR',
+  currency: 'Rs',
   logoUrl: '',
   faviconUrl: '',
   logoSize: 'medium',
@@ -30,9 +31,6 @@ const defaultSettings: StoreSettings = {
   darkMode: false,
   headerMenu: [
     { id: '1', label: 'Home', path: '/' },
-    { id: '2', label: 'Tracksuits', path: '/products?category=Tracksuits' },
-    { id: '3', label: 'Trousers', path: '/products?category=Trousers' },
-    { id: '4', label: 'T-Shirts', path: '/products?category=T-Shirts' },
   ],
   footerMenu: [
     { id: '1', label: 'About Us', path: '/pages/about-us' },
@@ -45,6 +43,16 @@ const defaultSettings: StoreSettings = {
   footerAdEnabled: false,
   inPageAdEnabled: false,
   socialLinks: { facebook: '', instagram: '', twitter: '', youtube: '' },
+  footerText: 'Premium fashion clothing store. Quality and style guaranteed.',
+  newsletterBlock: {
+    enabled: true,
+    title: 'GET 20% OFF YOUR FIRST ORDER',
+    description: 'Join our newsletter and stay updated with the latest drops, exclusive offers, and fashion tips.',
+    buttonText: 'Subscribe',
+    imageUrl: 'https://picsum.photos/seed/newsletter/800/600',
+    backgroundColor: '#dc2626',
+    textColor: '#ffffff'
+  },
   defaultSeoTitle: 'BS Stocks | Premium Fashion',
   defaultSeoDescription: 'The best place for premium tracksuits and fashion.',
   trackingCode: '',
@@ -55,17 +63,38 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<StoreSettings>(defaultSettings);
+  const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'settings', 'config'), (doc) => {
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'config'), (doc) => {
       if (doc.exists()) {
         setSettings(prev => ({ ...prev, ...doc.data() }));
       }
+    });
+
+    const unsubCollections = onSnapshot(query(collection(db, 'collections'), orderBy('createdAt', 'asc')), (snap) => {
+      const fetchedCollections = snap.docs.map(d => ({ id: d.id, ...d.data() } as Collection));
+      setCollections(fetchedCollections);
+      
+      // Update header menu based on collections
+      const dynamicMenu: MenuItem[] = [
+        { id: 'home', label: 'Home', path: '/' },
+        ...fetchedCollections.map(col => ({
+          id: col.id,
+          label: col.name,
+          path: `/products?category=${col.name}`
+        }))
+      ];
+      
+      setSettings(prev => ({ ...prev, headerMenu: dynamicMenu }));
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubSettings();
+      unsubCollections();
+    };
   }, []);
 
   // Apply theme settings to document
@@ -91,7 +120,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }, [settings, loading]);
 
   return (
-    <SettingsContext.Provider value={{ settings, loading }}>
+    <SettingsContext.Provider value={{ settings, collections, loading }}>
       {children}
     </SettingsContext.Provider>
   );

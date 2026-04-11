@@ -2,7 +2,7 @@ export interface Product {
   id: string;
   title: string;
   description: string;
-  category: 'Tracksuits' | 'Trousers' | 'T-Shirts';
+  category: string;
   vendor: string;
   
   // Media
@@ -36,7 +36,7 @@ export interface Product {
   
   // Organization
   tags: string[];
-  collections: ('Featured' | 'New Arrival' | 'Sale')[];
+  collections: string[];
   status: 'Draft' | 'Active';
   
   // Metadata
@@ -135,6 +135,16 @@ export interface StoreSettings {
   };
 
   // Advanced
+  footerText: string;
+  newsletterBlock: {
+    enabled: boolean;
+    title: string;
+    description: string;
+    buttonText: string;
+    imageUrl: string;
+    backgroundColor: string;
+    textColor: string;
+  };
   defaultSeoTitle: string;
   defaultSeoDescription: string;
   trackingCode: string;
@@ -156,6 +166,15 @@ export interface MenuItem {
   id: string;
   label: string;
   path: string;
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  image?: string;
+  createdAt: any;
 }
 
 export interface StandardPage {
