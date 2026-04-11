@@ -1,13 +1,13 @@
 import * as React from 'react';
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { signInWithEmailAndPassword, signInWithGoogle, auth } from '../firebase';
+import { signInWithEmailAndPassword, auth } from '../firebase';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card';
 import { toast } from 'sonner';
-import { LogIn, Mail, Lock, Globe } from 'lucide-react';
+import { LogIn, Mail, Lock } from 'lucide-react';
 
 export default function AdminLogin() {
   const [email, setEmail] = useState('');
@@ -28,22 +28,6 @@ export default function AdminLogin() {
     } catch (error: any) {
       console.error("Login error:", error);
       toast.error(error.message || 'Failed to login. Please check your credentials.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    try {
-      await signInWithGoogle();
-      toast.success('Logged in with Google');
-      navigate(from, { replace: true });
-    } catch (error: any) {
-      console.error("Google login error:", error);
-      if (error.code !== 'auth/popup-closed-by-user') {
-        toast.error('Failed to login with Google');
-      }
     } finally {
       setLoading(false);
     }
@@ -98,25 +82,6 @@ export default function AdminLogin() {
               {loading ? 'Logging in...' : 'Sign In'}
             </Button>
           </form>
-          
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
-            </div>
-          </div>
-          
-          <Button 
-            variant="outline" 
-            className="w-full h-11 font-medium" 
-            onClick={handleGoogleLogin}
-            disabled={loading}
-          >
-            <Globe className="mr-2 h-4 w-4" />
-            Google
-          </Button>
         </CardContent>
         <CardFooter className="flex flex-col space-y-2 text-center text-sm text-muted-foreground">
           <p>Only authorized administrators can access this area.</p>

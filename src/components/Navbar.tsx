@@ -5,7 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { Button } from './ui/button';
 import { useState, useEffect } from 'react';
-import { auth, signInWithGoogle, logout } from '../firebase';
+import { auth, logout } from '../firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { cn } from '../lib/utils';
 import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
@@ -34,6 +34,10 @@ export default function Navbar() {
     { label: 'Trousers', path: '/products?category=Trousers' },
     { label: 'T-Shirts', path: '/products?category=T-Shirts' },
   ];
+
+  const handleLoginClick = () => {
+    navigate('/admin/login');
+  };
 
   return (
     <div className="fixed top-0 w-full z-50">
@@ -104,7 +108,7 @@ export default function Navbar() {
                   <Button variant="ghost" size="sm" onClick={logout}>Logout</Button>
                 </div>
               ) : (
-                <Button variant="default" size="sm" onClick={signInWithGoogle}>Login</Button>
+                <Button variant="default" size="sm" onClick={handleLoginClick}>Login</Button>
               )}
             </div>
 
@@ -128,7 +132,7 @@ export default function Navbar() {
                       <Button variant="outline" onClick={logout}>Logout</Button>
                     </>
                   ) : (
-                    <Button onClick={signInWithGoogle}>Login / Sign Up</Button>
+                    <Button onClick={handleLoginClick}>Login / Sign Up</Button>
                   )}
                 </div>
               </SheetContent>

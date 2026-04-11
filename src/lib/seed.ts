@@ -1,5 +1,5 @@
-import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { collection, getDocs, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
+import { db, auth, createUserWithEmailAndPassword } from '../firebase';
 
 const MOCK_PRODUCTS = [
   {
@@ -54,7 +54,36 @@ const MOCK_PRODUCTS = [
   }
 ];
 
+export const ensureAdminUser = async () => {
+  const adminEmail = 'salfi6692@gmail.com';
+  const adminPassword = 'Bilal@#$786';
+
+  try {
+    // Try to create the user. If they already exist, this will throw an error.
+    const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
+    const user = userCredential.user;
+
+    // Also create a user document in Firestore with the admin role
+    await setDoc(doc(db, 'users', user.uid), {
+      email: adminEmail,
+      role: 'admin',
+      createdAt: serverTimestamp()
+    });
+    
+    console.log("Admin user created successfully!");
+  } catch (error: any) {
+    if (error.code === 'auth/email-already-in-use') {
+      console.log("Admin user already exists in Auth.");
+    } else {
+      console.error("Error ensuring admin user:", error);
+    }
+  }
+};
+
 export const seedDatabase = async () => {
+  // Ensure admin user exists
+  await ensureAdminUser();
+
   try {
     const snapshot = await getDocs(collection(db, 'products'));
     if (snapshot.empty) {
