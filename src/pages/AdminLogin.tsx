@@ -41,7 +41,9 @@ export default function AdminLogin() {
       navigate(from, { replace: true });
     } catch (error: any) {
       console.error("Google login error:", error);
-      toast.error('Failed to login with Google');
+      if (error.code !== 'auth/popup-closed-by-user') {
+        toast.error('Failed to login with Google');
+      }
     } finally {
       setLoading(false);
     }

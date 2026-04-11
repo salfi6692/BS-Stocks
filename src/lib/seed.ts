@@ -55,12 +55,17 @@ const MOCK_PRODUCTS = [
 ];
 
 export const seedDatabase = async () => {
-  const snapshot = await getDocs(collection(db, 'products'));
-  if (snapshot.empty) {
-    console.log("Seeding database...");
-    for (const product of MOCK_PRODUCTS) {
-      await addDoc(collection(db, 'products'), product);
+  try {
+    const snapshot = await getDocs(collection(db, 'products'));
+    if (snapshot.empty) {
+      console.log("Seeding database...");
+      for (const product of MOCK_PRODUCTS) {
+        await addDoc(collection(db, 'products'), product);
+      }
+      console.log("Database seeded!");
     }
-    console.log("Database seeded!");
+  } catch (error) {
+    // Silently fail seeding if permissions are missing (e.g. guest user)
+    console.log("Seeding skipped or failed due to permissions.");
   }
 };
