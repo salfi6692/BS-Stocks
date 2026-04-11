@@ -50,10 +50,20 @@ export default function Checkout() {
 
     try {
       await runTransaction(db, async (transaction) => {
-        // 1. Check and decrement stock for each item
-        for (const item of cart) {
-          const productRef = doc(db, 'products', item.id);
-          const productSnap = await transaction.get(productRef);
+        // 1. READ PHASE: Get all necessary data first
+        const productRefs = cart.map(item => doc(db, 'products', item.id));
+        const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+        
+        const metaRef = doc(db, 'metadata', 'orders');
+        const metaSnap = await transaction.get(metaRef);
+
+        // 2. VALIDATION & PREPARATION PHASE
+        const productUpdates = [];
+        
+        for (let i = 0; i < cart.length; i++) {
+          const item = cart[i];
+          const productSnap = productSnaps[i];
+          const productRef = productRefs[i];
           
           if (!productSnap.exists()) {
             throw new Error(`Product ${item.title} no longer exists.`);
@@ -85,12 +95,29 @@ export default function Checkout() {
             });
             updates.variants = updatedVariants;
           }
-
-          transaction.update(productRef, updates);
+          
+          productUpdates.push({ ref: productRef, data: updates });
         }
 
-        // 2. Create the order
+        // Calculate order number
+        let nextNumber = 1;
+        if (metaSnap.exists()) {
+          nextNumber = (metaSnap.data().lastNumber || 0) + 1;
+        }
+        const orderNumber = `BS-${nextNumber.toString().padStart(5, '0')}`;
+
+        // 3. WRITE PHASE: Perform all writes after all reads
+        // Update product stocks
+        for (const update of productUpdates) {
+          transaction.update(update.ref, update.data);
+        }
+
+        // Update order counter
+        transaction.set(metaRef, { lastNumber: nextNumber }, { merge: true });
+
+        // Create the order
         const orderData = {
+          orderNumber,
           customerName: formData.name,
           customerEmail: formData.email,
           customerPhone: formData.phone,
@@ -105,20 +132,21 @@ export default function Checkout() {
         const orderRef = doc(collection(db, 'orders'));
         transaction.set(orderRef, orderData);
         
-        // Send email notification (async, don't block the UI)
-        sendOrderEmailNotification(orderData, orderRef.id);
-        
-        return orderRef.id;
-      }).then((orderId) => {
+        return { orderId: orderRef.id, orderData };
+      }).then(async ({ orderId, orderData }) => {
         toast.success('Order placed successfully!');
+        
+        // Send email notification after successful transaction
+        const result = await sendOrderEmailNotification(orderData, orderId);
+        if (!result.success) {
+          toast.error(`Email notification failed: ${result.error}`, {
+            description: 'Please check your EmailJS configuration in the admin panel secrets.',
+            duration: 5000
+          });
+        }
+
         clearCart();
-        navigate('/order-confirmation', { state: { orderId, orderData: {
-          customerName: formData.name,
-          customerPhone: formData.phone,
-          address: `${formData.address}, ${formData.city}, ${formData.zip}`,
-          items: cart,
-          totalAmount: totalPrice
-        } } });
+        navigate('/order-confirmation', { state: { orderId } });
       });
 
     } catch (error: any) {

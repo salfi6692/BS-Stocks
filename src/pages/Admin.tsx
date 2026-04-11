@@ -55,9 +55,9 @@ import { db, auth, logout } from '../firebase';
 import { Product, Order, Review, StoreSettings, Collection } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 import { toast } from 'sonner';
-import { onAuthStateChanged } from 'firebase/auth';
 import { GoogleGenAI } from '@google/genai';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { sendOrderEmailNotification } from '../lib/notificationService';
 
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
@@ -1241,17 +1241,17 @@ function OrdersManager() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Order ID</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Action</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {orders.map((order) => (
-              <TableRow key={order.id}>
-                <TableCell className="font-mono text-xs">{order.id?.slice(0, 8)}...</TableCell>
+                <TableHead>Order #</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {orders.map((order) => (
+                <TableRow key={order.id}>
+                  <TableCell className="font-bold">{order.orderNumber || 'Legacy'}</TableCell>
                 <TableCell>
                   <div className="font-medium">{order.customerName}</div>
                   <div className="text-xs text-muted-foreground">{order.customerEmail}</div>
@@ -1276,7 +1276,7 @@ function OrdersManager() {
                     <Dialog>
                       <DialogTrigger render={<Button variant="outline" size="sm">Details</Button>} />
                       <DialogContent>
-                        <DialogHeader><DialogTitle>Order Details</DialogTitle></DialogHeader>
+                        <DialogHeader><DialogTitle>Order Details - {order.orderNumber || order.id}</DialogTitle></DialogHeader>
                         <div className="space-y-4 py-4">
                           <div className="grid grid-cols-2 gap-4 text-sm">
                             <div>
@@ -1988,6 +1988,68 @@ function StoreSettingsManager() {
                   </div>
                 </CardContent>
               </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Notification Settings</CardTitle>
+                  <CardDescription>Configure and test your order email notifications.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="p-4 bg-muted/30 rounded-xl border space-y-3">
+                    <p className="text-sm font-medium">EmailJS Status Check</p>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Public Key:</span>
+                        <span className={import.meta.env.VITE_EMAILJS_PUBLIC_KEY ? "text-green-600 font-bold" : "text-red-500 font-bold"}>
+                          {import.meta.env.VITE_EMAILJS_PUBLIC_KEY ? `Configured (${import.meta.env.VITE_EMAILJS_PUBLIC_KEY.substring(0, 4)}...)` : "Missing"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Service ID:</span>
+                        <span className={import.meta.env.VITE_EMAILJS_SERVICE_ID ? "text-green-600 font-bold" : "text-red-500 font-bold"}>
+                          {import.meta.env.VITE_EMAILJS_SERVICE_ID ? `Configured (${import.meta.env.VITE_EMAILJS_SERVICE_ID.substring(0, 4)}...)` : "Missing"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Template ID:</span>
+                        <span className={import.meta.env.VITE_EMAILJS_TEMPLATE_ID ? "text-green-600 font-bold" : "text-red-500 font-bold"}>
+                          {import.meta.env.VITE_EMAILJS_TEMPLATE_ID ? `Configured (${import.meta.env.VITE_EMAILJS_TEMPLATE_ID.substring(0, 4)}...)` : "Missing"}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      To fix "Missing" values, go to <b>Settings &gt; Secrets</b> in AI Studio and add the keys. You can name them with or without the <b>VITE_</b> prefix (e.g., <i>EMAILJS_PUBLIC_KEY</i>).
+                      <br /><br />
+                      <b>Note:</b> Ensure your EmailJS template's "To Email" field is set to <code>&#123;&#123;to_email&#125;&#125;</code> or <code>&#123;&#123;email&#125;&#125;</code>.
+                    </p>
+                  </div>
+                  
+                  <Button 
+                    variant="outline" 
+                    className="w-full"
+                    onClick={async () => {
+                      const testOrder = {
+                        customerName: 'Test User',
+                        customerEmail: 'test@example.com',
+                        customerPhone: '1234567890',
+                        address: '123 Test St, Test City',
+                        items: [{ title: 'Test Product', quantity: 1, price: 100, selectedSize: 'M' }],
+                        totalAmount: 100
+                      };
+                      toast.promise(sendOrderEmailNotification(testOrder, 'TEST-123'), {
+                        loading: 'Sending test email...',
+                        success: (res: any) => {
+                          if (res.success) return 'Test email sent successfully!';
+                          throw new Error(res.error);
+                        },
+                        error: (err) => `Failed: ${err.message}`
+                      });
+                    }}
+                  >
+                    Send Test Order Email
+                  </Button>
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
         </div>
@@ -2527,27 +2589,8 @@ function ImportExportManager() {
 // --- Admin Layout ---
 
 export default function Admin() {
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user && user.email === 'salfi6692@gmail.com') {
-        setIsAdmin(true);
-      } else {
-        setIsAdmin(false);
-        if (location.pathname.startsWith('/admin')) {
-          toast.error('Access denied. Admin only.');
-          navigate('/');
-        }
-      }
-    });
-    return () => unsubscribe();
-  }, [navigate]);
-
-  if (isAdmin === null) return <div className="p-20 text-center">Checking permissions...</div>;
-  if (!isAdmin) return null;
 
   const menuItems = [
     { icon: <LayoutDashboard className="h-5 w-5" />, label: 'Dashboard', path: '/admin' },

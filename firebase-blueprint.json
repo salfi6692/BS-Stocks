@@ -144,6 +144,10 @@
     "/settings/config": {
       "schema": "StoreSettings",
       "description": "Global store settings"
+    },
+    "/metadata/orders": {
+      "schema": "object",
+      "description": "Tracks sequential order numbers"
     }
   }
 }
