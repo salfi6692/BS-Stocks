@@ -11,6 +11,7 @@ import { collection, addDoc, serverTimestamp, runTransaction, doc } from 'fireba
 import { db } from '../firebase';
 import { toast } from 'sonner';
 import { ChevronLeft, CreditCard, Truck } from 'lucide-react';
+import { sendOrderEmailNotification } from '../lib/notificationService';
 
 export default function Checkout() {
   const { settings } = useSettings();
@@ -104,11 +105,20 @@ export default function Checkout() {
         const orderRef = doc(collection(db, 'orders'));
         transaction.set(orderRef, orderData);
         
+        // Send email notification (async, don't block the UI)
+        sendOrderEmailNotification(orderData, orderRef.id);
+        
         return orderRef.id;
       }).then((orderId) => {
         toast.success('Order placed successfully!');
         clearCart();
-        navigate('/order-confirmation', { state: { orderId } });
+        navigate('/order-confirmation', { state: { orderId, orderData: {
+          customerName: formData.name,
+          customerPhone: formData.phone,
+          address: `${formData.address}, ${formData.city}, ${formData.zip}`,
+          items: cart,
+          totalAmount: totalPrice
+        } } });
       });
 
     } catch (error: any) {

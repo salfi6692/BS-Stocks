@@ -1,11 +1,19 @@
 import { useLocation, Link } from 'react-router-dom';
 import { Button } from '../components/ui/button';
-import { CheckCircle, Package, ArrowRight } from 'lucide-react';
+import { CheckCircle, Package, ArrowRight, MessageSquare } from 'lucide-react';
 import { motion } from 'motion/react';
+import { getWhatsAppUrl } from '../lib/notificationService';
 
 export default function OrderConfirmation() {
   const location = useLocation();
   const orderId = location.state?.orderId || 'N/A';
+  const orderData = location.state?.orderData;
+
+  const handleWhatsAppConfirm = () => {
+    if (orderData) {
+      window.open(getWhatsAppUrl(orderData, orderId), '_blank');
+    }
+  };
 
   return (
     <div className="container mx-auto px-4 py-20 text-center space-y-8">
@@ -38,7 +46,20 @@ export default function OrderConfirmation() {
             <p className="text-sm text-muted-foreground">You will receive an email confirmation shortly with your order details.</p>
           </div>
         </div>
-        <p className="text-sm text-muted-foreground">
+        
+        {orderData && (
+          <div className="pt-4 border-t">
+            <p className="text-sm font-medium mb-3">For faster processing, you can confirm your order on WhatsApp:</p>
+            <Button 
+              onClick={handleWhatsAppConfirm}
+              className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white gap-2 rounded-xl h-12"
+            >
+              <MessageSquare className="h-5 w-5" /> Confirm on WhatsApp
+            </Button>
+          </div>
+        )}
+
+        <p className="text-sm text-muted-foreground pt-2">
           Our team is now preparing your items for shipment. You can track your order status in your account dashboard.
         </p>
       </div>
