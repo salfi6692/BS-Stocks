@@ -18,6 +18,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import OrderConfirmation from './pages/OrderConfirmation';
 import StandardPageView from './pages/StandardPageView';
 import { useEffect } from 'react';
+import { motion } from 'motion/react';
 import { seedDatabase } from './lib/seed';
 
 export default function App() {
@@ -32,7 +33,12 @@ export default function App() {
           <CartProvider>
             <Router>
               <ScrollToTop />
-              <div className="min-h-screen bg-background text-foreground flex flex-col">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5 }}
+                className="min-h-screen bg-background text-foreground flex flex-col"
+              >
                 <Navbar />
                 <main className="flex-grow pt-20">
                   <Routes>
@@ -56,7 +62,7 @@ export default function App() {
                 </main>
                 <Footer />
                 <Toaster position="top-center" richColors />
-              </div>
+              </motion.div>
             </Router>
           </CartProvider>
         </ThemeProvider>
