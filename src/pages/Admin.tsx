@@ -445,6 +445,13 @@ function ProductsManager() {
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
 
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [isBulkEditing, setIsBulkEditing] = useState(false);
+  const [bulkPrice, setBulkPrice] = useState<string>('');
+  const [bulkCompareAtPrice, setBulkCompareAtPrice] = useState<string>('');
+  const [isSheetMode, setIsSheetMode] = useState(false);
+  const [editedProducts, setEditedProducts] = useState<Record<string, { price?: number, compareAtPrice?: number }>>({});
+
   const fetchProducts = async () => {
     setLoading(true);
     try {
@@ -577,6 +584,69 @@ function ProductsManager() {
       toast.success('AI Description generated!');
     } catch (error) {
       toast.error('AI generation failed');
+    }
+  };
+
+  const handleBulkUpdate = async () => {
+    if (selectedProductIds.length === 0) return;
+    
+    toast.info(`Updating ${selectedProductIds.length} products...`);
+    try {
+      const priceVal = bulkPrice ? parseFloat(bulkPrice) : null;
+      const comparePriceVal = bulkCompareAtPrice ? parseFloat(bulkCompareAtPrice) : null;
+
+      if (priceVal === null && comparePriceVal === null) {
+        toast.error('Please enter at least one price to update');
+        return;
+      }
+
+      const batchSize = 10;
+      for (let i = 0; i < selectedProductIds.length; i += batchSize) {
+        const batch = selectedProductIds.slice(i, i + batchSize);
+        await Promise.all(batch.map(async (id) => {
+          const productRef = doc(db, 'products', id);
+          const updateData: any = { updatedAt: serverTimestamp() };
+          if (priceVal !== null) updateData.price = priceVal;
+          if (comparePriceVal !== null) updateData.compareAtPrice = comparePriceVal;
+          return updateDoc(productRef, updateData);
+        }));
+      }
+
+      toast.success(`Successfully updated ${selectedProductIds.length} products!`);
+      setSelectedProductIds([]);
+      setIsBulkEditing(false);
+      setBulkPrice('');
+      setBulkCompareAtPrice('');
+      fetchProducts();
+    } catch (error) {
+      console.error(error);
+      toast.error('Error during bulk update');
+    }
+  };
+
+  const handleSheetSave = async () => {
+    const ids = Object.keys(editedProducts);
+    if (ids.length === 0) return;
+
+    toast.info(`Saving changes for ${ids.length} products...`);
+    try {
+      const batchSize = 10;
+      for (let i = 0; i < ids.length; i += batchSize) {
+        const batchIds = ids.slice(i, i + batchSize);
+        await Promise.all(batchIds.map(async (id) => {
+          const productRef = doc(db, 'products', id);
+          return updateDoc(productRef, {
+            ...editedProducts[id],
+            updatedAt: serverTimestamp()
+          });
+        }));
+      }
+      toast.success('All changes saved successfully');
+      setEditedProducts({});
+      fetchProducts();
+    } catch (error) {
+      console.error(error);
+      toast.error('Error saving changes');
     }
   };
 
@@ -1076,8 +1146,66 @@ function ProductsManager() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h2 className="text-2xl font-bold">Products ({products.length})</h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-2xl font-bold">Products ({products.length})</h2>
+          {selectedProductIds.length > 0 && (
+            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
+              <Badge variant="secondary" className="px-3 py-1 font-bold">
+                {selectedProductIds.length} Selected
+              </Badge>
+              <Dialog open={isBulkEditing} onOpenChange={setIsBulkEditing}>
+                <DialogTrigger render={<Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-white gap-2"><Edit className="h-4 w-4" /> Bulk Edit Pricing</Button>} />
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Bulk Edit Pricing</DialogTitle>
+                    <CardDescription>Updating {selectedProductIds.length} products simultaneously.</CardDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label>New Base Price ({settings.currency})</Label>
+                      <Input 
+                        type="number" 
+                        placeholder="Leave empty to keep current" 
+                        value={bulkPrice}
+                        onChange={e => setBulkPrice(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>New Special / Compare-at Price ({settings.currency})</Label>
+                      <Input 
+                        type="number" 
+                        placeholder="Leave empty to keep current" 
+                        value={bulkCompareAtPrice}
+                        onChange={e => setBulkCompareAtPrice(e.target.value)}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground italic">
+                      * Prices will be updated for all selected products. This action cannot be undone.
+                    </p>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsBulkEditing(false)}>Cancel</Button>
+                    <Button onClick={handleBulkUpdate} className="bg-orange-600 hover:bg-orange-700 text-white">Apply To {selectedProductIds.length} Products</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedProductIds([])} className="text-muted-foreground">Clear</Button>
+            </div>
+          )}
+        </div>
         <div className="flex flex-wrap gap-2">
+          {Object.keys(editedProducts).length > 0 && (
+            <Button onClick={handleSheetSave} className="bg-green-600 hover:bg-green-700 text-white animate-pulse">
+              <CheckCircle2 className="h-4 w-4 mr-2" /> Save {Object.keys(editedProducts).length} Changes
+            </Button>
+          )}
+          <Button 
+            variant={isSheetMode ? "default" : "outline"} 
+            onClick={() => setIsSheetMode(!isSheetMode)}
+            className={isSheetMode ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}
+          >
+            <FileSpreadsheet className="h-4 w-4 mr-2" /> {isSheetMode ? "Classic View" : "Sheet Layout"}
+          </Button>
           <Button variant="outline" onClick={syncAllProductCollections}>
             <RefreshCw className="h-4 w-4 mr-2" /> Sync Collections
           </Button>
@@ -1132,27 +1260,54 @@ function ProductsManager() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]">
+                    <div className="flex items-center">
+                      <input 
+                        type="checkbox" 
+                        className="h-4 w-4 rounded border-gray-300"
+                        checked={products.length > 0 && selectedProductIds.length === products.length}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedProductIds(products.map(p => p.id));
+                          else setSelectedProductIds([]);
+                        }}
+                      />
+                    </div>
+                  </TableHead>
                   <TableHead className="w-[80px]">Image</TableHead>
                   <TableHead>Product</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Inventory</TableHead>
                   <TableHead>Category</TableHead>
-                  <TableHead>Price</TableHead>
+                  <TableHead>{isSheetMode ? "Base Price" : "Price"}</TableHead>
+                  {isSheetMode && <TableHead>Special Price</TableHead>}
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow key="loading">
-                    <TableCell colSpan={7} className="text-center py-10">Loading products...</TableCell>
+                    <TableCell colSpan={isSheetMode ? 9 : 8} className="text-center py-10">Loading products...</TableCell>
                   </TableRow>
                 ) : products.length === 0 ? (
                   <TableRow key="empty">
-                    <TableCell colSpan={7} className="text-center py-10">No products found</TableCell>
+                    <TableCell colSpan={isSheetMode ? 9 : 8} className="text-center py-10">No products found</TableCell>
                   </TableRow>
                 ) : (
                   products.map((product) => (
-                    <TableRow key={product.id}>
+                    <TableRow key={product.id} className={selectedProductIds.includes(product.id) ? 'bg-muted/50' : ''}>
+                      <TableCell>
+                        <div className="flex items-center">
+                          <input 
+                            type="checkbox" 
+                            className="h-4 w-4 rounded border-gray-300"
+                            checked={selectedProductIds.includes(product.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedProductIds(prev => [...prev, product.id]);
+                              else setSelectedProductIds(prev => prev.filter(id => id !== product.id));
+                            }}
+                          />
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <div className="w-12 h-12 rounded border bg-muted overflow-hidden">
                           {product.images?.[0] ? (
@@ -1177,7 +1332,46 @@ function ProductsManager() {
                         {product.hasVariants && <span className="text-xs text-muted-foreground block">for {product.variants?.length || 0} variants</span>}
                       </TableCell>
                       <TableCell>{product.category}</TableCell>
-                      <TableCell>{settings.currency} {product.price}</TableCell>
+                      <TableCell>
+                        {isSheetMode ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground">{settings.currency}</span>
+                            <Input 
+                              type="number" 
+                              className="w-24 h-8 text-xs px-2"
+                              defaultValue={product.price}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                setEditedProducts(prev => ({
+                                  ...prev,
+                                  [product.id]: { ...(prev[product.id] || {}), price: val }
+                                }));
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <span>{settings.currency} {product.price}</span>
+                        )}
+                      </TableCell>
+                      {isSheetMode && (
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground">{settings.currency}</span>
+                            <Input 
+                              type="number" 
+                              className="w-24 h-8 text-xs px-2"
+                              defaultValue={product.compareAtPrice || 0}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                setEditedProducts(prev => ({
+                                  ...prev,
+                                  [product.id]: { ...(prev[product.id] || {}), compareAtPrice: val }
+                                }));
+                              }}
+                            />
+                          </div>
+                        </TableCell>
+                      )}
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button variant="ghost" size="icon" onClick={() => handleDuplicate(product)}>
