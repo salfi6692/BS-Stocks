@@ -153,13 +153,18 @@ export default function ProductDetail() {
     );
   }
 
-  const discount = product.compareAtPrice 
-    ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100) 
-    : 0;
-
-  const selectedVariant = product?.variants?.find(v => v.size === selectedSize && v.color === selectedColor);
-  const currentPrice = selectedVariant?.price || product?.price || 0;
+  const selectedVariant = product.hasVariants && product.variants
+    ? product.variants.find(v => 
+        v.size.toLowerCase() === selectedSize.toLowerCase() && 
+        v.color.toLowerCase() === selectedColor.toLowerCase()
+      )
+    : null;
+  const currentPrice = product?.price || 0;
   const currentStock = selectedVariant ? selectedVariant.stock : (product?.stockQuantity || 0);
+
+  const discount = product.compareAtPrice 
+    ? Math.round(((product.compareAtPrice - currentPrice) / product.compareAtPrice) * 100) 
+    : 0;
 
   const nextImage = () => {
     if (!product || product.images.length <= 1) return;

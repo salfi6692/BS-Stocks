@@ -506,7 +506,10 @@ function ProductsManager() {
     }
 
     try {
-      const variants = currentProduct.variants || [];
+      const variants = (currentProduct.variants || []).map((v: any) => ({
+        ...v,
+        price: currentProduct.price
+      }));
       const totalVariantStock = variants.reduce((sum, v) => sum + (v.stock || 0), 0);
       
       const tags = currentProduct.tags || [];
@@ -608,6 +611,18 @@ function ProductsManager() {
           const updateData: any = { updatedAt: serverTimestamp() };
           if (priceVal !== null) updateData.price = priceVal;
           if (comparePriceVal !== null) updateData.compareAtPrice = comparePriceVal;
+
+          const docSnap = await getDoc(productRef);
+          if (docSnap.exists()) {
+            const prodData = docSnap.data();
+            if (prodData.variants && prodData.variants.length > 0 && priceVal !== null) {
+              updateData.variants = prodData.variants.map((v: any) => ({
+                ...v,
+                price: priceVal
+              }));
+            }
+          }
+
           return updateDoc(productRef, updateData);
         }));
       }
@@ -635,10 +650,23 @@ function ProductsManager() {
         const batchIds = ids.slice(i, i + batchSize);
         await Promise.all(batchIds.map(async (id) => {
           const productRef = doc(db, 'products', id);
-          return updateDoc(productRef, {
+          const updateData: any = {
             ...editedProducts[id],
             updatedAt: serverTimestamp()
-          });
+          };
+
+          const docSnap = await getDoc(productRef);
+          if (docSnap.exists()) {
+            const prodData = docSnap.data();
+            if (prodData.variants && prodData.variants.length > 0 && typeof editedProducts[id].price === 'number') {
+              updateData.variants = prodData.variants.map((v: any) => ({
+                ...v,
+                price: editedProducts[id].price
+              }));
+            }
+          }
+
+          return updateDoc(productRef, updateData);
         }));
       }
       toast.success('All changes saved successfully');
@@ -878,13 +906,9 @@ function ProductsManager() {
                             <TableCell>
                               <Input 
                                 type="number" 
-                                className="w-20 h-8" 
-                                value={v.price} 
-                                onChange={e => {
-                                  const newVariants = [...(currentProduct?.variants || [])];
-                                  newVariants[idx].price = parseFloat(e.target.value);
-                                  setCurrentProduct(p => ({ ...p, variants: newVariants }));
-                                }}
+                                className="w-20 h-8 bg-muted cursor-not-allowed" 
+                                value={currentProduct?.price || 0} 
+                                disabled
                               />
                             </TableCell>
                             <TableCell>
